@@ -1,0 +1,63 @@
+.app-container {
+  background-color: black;
+  min-height: 100vh;
+  padding: 20px;
+  color: white;
+}
+
+.input {
+  background-color: white;
+  height: 40px;
+  margin: 12px;
+  border: 1px solid black;
+  padding: 10px;
+  display: block;
+}
+
+.ok {
+  color: green;
+}
+.not-ok {
+  color: red;
+}
+
+.bold-text {
+  font-weight: bold;
+  font-size: 21px;
+  cursor: pointer;
+}
+
+.section-title {
+  font-weight: bold;
+  margin-top: 10px;
+}
+
+.red {
+  color: red;
+}
+.gold {
+  color: gold;
+}
+.silver {
+  color: silver;
+}
+.bronze {
+  color: peru;
+}
+
+.btn {
+  margin: 5px;
+  padding: 8px 12px;
+  border: none;
+  cursor: pointer;
+}
+
+.btn.green {
+  background-color: green;
+  color: white;
+}
+.btn.red {
+  background-color: red;
+  color: white;
+}
+
