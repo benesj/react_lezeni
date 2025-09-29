@@ -17,7 +17,7 @@
   },
   "scripts": {
     "predeploy": "npm run build",
-    "deploy": "gh-pages --branch gh-pages --repo https://github.com/benesj/react_lezeni.git -d build",
+    "deploy": "git add build -f && git commit -m 'Deploy build' && git subtree push --prefix build origin gh-pages",
     "build:staging": "env-cmd -f .env.staging npm run build",
     "start": "react-scripts start",
     "build": "react-scripts build",
