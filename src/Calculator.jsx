@@ -295,7 +295,7 @@ function Calculator() {
   const calculateNewXp = (stena, xp) => {
     // let increment = +stena + 10 - getLvlFromXp(+xp);
     let increment = +stena;
-    if (increment < 1) increment = 1;
+    // if (increment < 1) increment = 1;
     return xp + increment;
   };
 
