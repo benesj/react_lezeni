@@ -4,7 +4,8 @@ import "./App.css";
 
 // ✅ Pomocné validace
 function isNumberOk(number) {
-  return !isNaN(number) && number > 0;
+  // return !isNaN(number) && number > 0;
+  return !isNaN(number);
 }
 function isTextOk(text, data) {
   const num = parseInt(text, 10);
