@@ -1,15 +1,15 @@
 {
   "files": {
     "main.css": "/react_lezeni/static/css/main.2da170ca.css",
-    "main.js": "/react_lezeni/static/js/main.db87f4ee.js",
+    "main.js": "/react_lezeni/static/js/main.3ee4648b.js",
     "static/js/453.0d78f71d.chunk.js": "/react_lezeni/static/js/453.0d78f71d.chunk.js",
     "index.html": "/react_lezeni/index.html",
     "main.2da170ca.css.map": "/react_lezeni/static/css/main.2da170ca.css.map",
-    "main.db87f4ee.js.map": "/react_lezeni/static/js/main.db87f4ee.js.map",
+    "main.3ee4648b.js.map": "/react_lezeni/static/js/main.3ee4648b.js.map",
     "453.0d78f71d.chunk.js.map": "/react_lezeni/static/js/453.0d78f71d.chunk.js.map"
   },
   "entrypoints": [
     "static/css/main.2da170ca.css",
-    "static/js/main.db87f4ee.js"
+    "static/js/main.3ee4648b.js"
   ]
 }
