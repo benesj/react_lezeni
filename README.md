@@ -53,9 +53,18 @@ Přihlášení platí 12 hodin nebo do restartu serveru.
 
 ## Data
 
-- `server/data.json` — živá data, po každé změně se předchozí verze odloží
-  do `server/data.bak.json`
-- ani jeden soubor není v gitu, zálohovat se musí ručně (stačí zkopírovat)
+Žebříček je uložený **na systémovém disku**, ne u projektu — ten leží na
+externím disku, který nemusí být připojený:
+
+```
+C:\Users\<jméno>\AppData\Roaming\lezecky-zebricek\data.json
+```
+
+- `data.json` — živá data; před každou změnou se předchozí verze odloží
+  do `data.bak.json` vedle
+- soubory nejsou v gitu, zálohovat se musí ručně (stačí zkopírovat)
+- jiné umístění: `$env:DATA_DIR="E:\zalohy\zebricek"; npm run server`
+- přesnou cestu server vypíše při startu
 - v gitu není ani `server/auth.json` a `server/cert/` — patří jen na tenhle stroj
 
 **Přenos starých dat z prohlížeče:** v prohlížeči, kde žebříček dosud byl,
