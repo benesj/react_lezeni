@@ -1,3 +1,64 @@
+# Žebříček lezeckého kroužku
+
+Data má na starosti malý server běžící na domácím PC (`server/`). Ukládá je do
+`server/data.json` a zároveň rozdává hotovou aplikaci, takže všichni v síti
+vidí a mění jeden společný žebříček.
+
+## Spuštění
+
+```bash
+npm install          # jen poprvé
+npm run set-password # jen poprvé — nastaví admin heslo
+npm run build        # po každé změně kódu
+npm run server       # tohle nechat běžet
+```
+
+Server po startu vypíše adresy, na kterých je dostupný, např.:
+
+```
+  místně:  http://localhost:4000
+  v síti:  http://192.168.0.15:4000
+```
+
+Ostatní zadají tu druhou adresu do prohlížeče (musí být na stejné wifi).
+Přidat si ji jde jako zástupce na plochu telefonu.
+
+Jiný port: `set PORT=8080 && npm run server` (PowerShell: `$env:PORT=8080; npm run server`).
+
+## Heslo
+
+Admin režim ověřuje server. V `server/auth.json` je jen scrypt hash a náhodná
+sůl — heslo samotné nikde uložené není a do prohlížeče se nedostane.
+Soubor není v gitu ani v buildu. Změna hesla: `npm run set-password`.
+Přihlášení platí 12 hodin nebo do restartu serveru.
+
+## Data
+
+- `server/data.json` — živá data, po každé změně se předchozí verze odloží
+  do `server/data.bak.json`
+- ani jeden soubor není v gitu, zálohovat se musí ručně (stačí zkopírovat)
+
+**Přenos starých dat z prohlížeče:** v prohlížeči, kde žebříček dosud byl,
+otevřít konzoli (F12) a spustit `copy(localStorage.getItem('urlData'))`.
+Obsah schránky vložit do `server/data.json` a restartovat server.
+
+## Vývoj
+
+`npm start` běží na portu 3000 a data si sám bere ze serveru na portu 4000,
+takže je potřeba mít vedle spuštěné i `npm run server`.
+Jinou adresu serveru lze nastavit v `.env.local`:
+`REACT_APP_API_URL=http://192.168.0.15:4000`
+
+## Verze na GitHub Pages
+
+`npm run deploy` publikuje aplikaci na
+<https://benesj.github.io/react_lezeni>. Ta se ale k serveru doma nedostane
+(stránka jede přes https, domácí server přes http v lokální síti — prohlížeč
+takové volání zablokuje), takže bude jen zobrazovat naposledy načtená data.
+Sdílený žebříček funguje přes adresu z `npm run server`.
+
+---
+
 # Getting Started with Create React App
 
 This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
