@@ -210,6 +210,13 @@ async function start() {
       "  Při prvním otevření prohlížeč varuje kvůli vlastnímu certifikátu",
     );
     console.log("  -> Pokročilé / Advanced -> Pokračovat.");
+
+    // QR kód s adresou pro telefon; když balíček chybí, server běží dál
+    try {
+      require("./qr").vypisVse();
+    } catch (e) {
+      console.log("  (QR kód se nepodařilo vypsat: " + e.message + ")");
+    }
     if (!auth.jeNastaveno()) {
       console.log("");
       console.log(
