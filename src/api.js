@@ -3,14 +3,14 @@
 
 // Kam se ptát:
 //  1. REACT_APP_API_URL, když je nastavená (např. v .env.local)
-//  2. při vývoji (npm start na portu 3000) server na portu 4000 stejného stroje
+//  2. při vývoji (npm start na portu 3000) HTTPS server na portu 4443
 //  3. jinak stejná adresa, ze které se načetla aplikace
 function zjistiZaklad() {
   if (process.env.REACT_APP_API_URL) {
     return process.env.REACT_APP_API_URL.replace(/\/$/, "");
   }
-  const { protocol, hostname, port, origin } = window.location;
-  if (port === "3000") return `${protocol}//${hostname}:4000`;
+  const { hostname, port, origin } = window.location;
+  if (port === "3000") return `https://${hostname}:4443`;
   return origin;
 }
 

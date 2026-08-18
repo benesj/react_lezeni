@@ -27,3 +27,6 @@ yarn-error.log*
 /server/data.bak.json
 /server/data.json.tmp
 /server/auth.json
+
+# certifikát serveru — patří jen na tenhle stroj
+/server/cert

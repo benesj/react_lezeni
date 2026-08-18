@@ -1,16 +1,22 @@
 // Server pro sdílená data žebříčku. Běží na tomhle PC, drží data v server/data.json
 // a zároveň servíruje hotový build aplikace, takže ostatní v síti otevřou
-// http://<ip-tohohle-pc>:4000 a vidí i mění stejná data.
-// Nemá žádné npm závislosti — jen standardní Node.
+// adresu tohohle PC a vidí i mění stejná data.
+//
+// Komunikace jede přes HTTPS (vlastní certifikát z server/cert.js), takže heslo
+// ani data nejdou po síti čitelně. Na HTTP portu sedí jen přesměrování na HTTPS.
 const http = require("http");
+const https = require("https");
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
 
 const store = require("./store");
 const auth = require("./auth");
+const cert = require("./cert");
 
-const PORT = Number(process.env.PORT) || 4000;
+// HTTP port jen přesměrovává, skutečná aplikace běží na HTTPS portu.
+const HTTP_PORT = Number(process.env.PORT) || 4000;
+const HTTPS_PORT = Number(process.env.HTTPS_PORT) || 4443;
 const BUILD_DIR = path.join(__dirname, "..", "build");
 // build je stavěný pro GitHub Pages, takže odkazuje na /react_lezeni/...
 const PUBLIC_PREFIX = "/react_lezeni";
@@ -36,6 +42,7 @@ const posli = (res, status, telo) => {
     "Access-Control-Allow-Headers": "Content-Type, Authorization",
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     "Cache-Control": "no-store",
+    "X-Content-Type-Options": "nosniff",
   });
   res.end(data);
 };
@@ -85,7 +92,9 @@ async function api(req, res, cesta) {
       return posli(res, 429, { error: "Moc pokusů, zkus to za chvíli." });
     }
     if (!auth.jeNastaveno()) {
-      return posli(res, 503, { error: "Heslo není nastavené (npm run set-password)." });
+      return posli(res, 503, {
+        error: "Heslo není nastavené (npm run set-password).",
+      });
     }
     const telo = await nactiTelo(req);
     if (!auth.overHeslo(telo.password || "")) {
@@ -97,7 +106,8 @@ async function api(req, res, cesta) {
   // Od tohohle místa dál se musí být přihlášen.
   const zapisove = ["/api/add", "/api/remove", "/api/xp", "/api/import"];
   if (zapisove.includes(cesta)) {
-    if (req.method !== "POST") return posli(res, 405, { error: "Špatná metoda" });
+    if (req.method !== "POST")
+      return posli(res, 405, { error: "Špatná metoda" });
     if (!jePrihlasen(req)) return posli(res, 401, { error: "Nepřihlášen" });
 
     const telo = await nactiTelo(req);
@@ -139,39 +149,79 @@ function statickySoubor(res, cesta) {
   fs.readFile(soubor, (err, obsah) => {
     if (err) {
       // neexistující cesta -> index.html (aplikace si to přebere sama)
-      if (relativni !== "/index.html") return statickySoubor(res, "/index.html");
+      if (relativni !== "/index.html")
+        return statickySoubor(res, "/index.html");
       res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
       return res.end("Build chybí — spusť nejdřív: npm run build");
     }
     res.writeHead(200, {
       "Content-Type": MIME[path.extname(soubor)] || "application/octet-stream",
-      "Cache-Control": soubor.includes("static") ? "max-age=604800" : "no-cache",
+      "Cache-Control": soubor.includes("static")
+        ? "max-age=604800"
+        : "no-cache",
+      "X-Content-Type-Options": "nosniff",
+      "Referrer-Policy": "same-origin",
     });
     res.end(obsah);
   });
 }
 
-const server = http.createServer((req, res) => {
-  const cesta = decodeURIComponent(new URL(req.url, "http://localhost").pathname);
+function obsluha(req, res) {
+  const cesta = decodeURIComponent(
+    new URL(req.url, "https://localhost").pathname,
+  );
 
   if (cesta.startsWith("/api/")) {
     api(req, res, cesta).catch((e) => posli(res, 400, { error: e.message }));
     return;
   }
   statickySoubor(res, cesta);
+}
+
+// Kdo napíše adresu bez https://, přistane na HTTP portu a pošle se dál.
+// Záměrně se neposílá HSTS — s vlastním certifikátem by pak nešlo odkliknout
+// varování prohlížeče.
+const presmerovani = http.createServer((req, res) => {
+  const host = String(req.headers.host || "").split(":")[0];
+  res.writeHead(301, { Location: `https://${host}:${HTTPS_PORT}${req.url}` });
+  res.end();
 });
 
-server.listen(PORT, () => {
-  const adresy = Object.values(os.networkInterfaces())
-    .flat()
-    .filter((i) => i.family === "IPv4" && !i.internal)
-    .map((i) => i.address);
+// Certifikát se při prvním spuštění vyrobí sám (a znovu, když se změní IP).
+async function start() {
+  const server = https.createServer(await cert.nacti(), obsluha);
 
-  console.log("Server žebříčku běží.");
-  console.log("  data:    " + store.DATA_FILE);
-  console.log("  místně:  http://localhost:" + PORT);
-  adresy.forEach((a) => console.log("  v síti:  http://" + a + ":" + PORT));
-  if (!auth.jeNastaveno()) {
-    console.log("\n  POZOR: admin heslo není nastavené -> npm run set-password");
-  }
+  server.listen(HTTPS_PORT, () => {
+    const { ip } = cert.adresy();
+    const vSiti = ip.filter((a) => a !== "127.0.0.1");
+
+    console.log("Server žebříčku běží (HTTPS).");
+    console.log("  data:    " + store.DATA_FILE);
+    console.log("  cert:    " + cert.CERT_FILE);
+    console.log("  místně:  https://localhost:" + HTTPS_PORT);
+    vSiti.forEach((a) =>
+      console.log("  v síti:  https://" + a + ":" + HTTPS_PORT),
+    );
+    console.log("");
+    console.log(
+      "  (adresa bez https:// na portu " + HTTP_PORT + " se přesměruje sem)",
+    );
+    console.log(
+      "  Při prvním otevření prohlížeč varuje kvůli vlastnímu certifikátu",
+    );
+    console.log("  -> Pokročilé / Advanced -> Pokračovat.");
+    if (!auth.jeNastaveno()) {
+      console.log("");
+      console.log(
+        "  POZOR: admin heslo není nastavené -> npm run set-password",
+      );
+    }
+  });
+
+  presmerovani.listen(HTTP_PORT);
+}
+
+start().catch((e) => {
+  console.error("Server se nepodařilo spustit:", e.message);
+  process.exit(1);
 });

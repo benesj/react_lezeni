@@ -16,14 +16,33 @@ npm run server       # tohle nechat běžet
 Server po startu vypíše adresy, na kterých je dostupný, např.:
 
 ```
-  místně:  http://localhost:4000
-  v síti:  http://192.168.0.15:4000
+  místně:  https://localhost:4443
+  v síti:  https://192.168.0.15:4443
 ```
 
 Ostatní zadají tu druhou adresu do prohlížeče (musí být na stejné wifi).
 Přidat si ji jde jako zástupce na plochu telefonu.
 
-Jiný port: `set PORT=8080 && npm run server` (PowerShell: `$env:PORT=8080; npm run server`).
+Jiné porty: `$env:PORT=8080; $env:HTTPS_PORT=8443; npm run server`
+(`PORT` je jen přesměrování na `HTTPS_PORT`).
+
+## Zabezpečení spojení
+
+Provoz jede přes HTTPS, takže heslo ani data po síti nikdo nepřečte
+(TLS 1.3). Certifikát si server vyrobí sám při prvním spuštění a uloží do
+`server/cert/` — je vystavený na jméno počítače a na všechny jeho IP adresy.
+Když se PC přepne do jiné sítě a dostane jinou IP, server si při startu udělá
+nový.
+
+Protože si certifikát podepsal sám, prohlížeč při **prvním** otevření varuje
+("Vaše připojení není soukromé"). Je potřeba jednou dát *Pokročilé →
+Pokračovat na…* — na každém zařízení jednou. Po odkliknutí je spojení
+šifrované úplně stejně jako u běžných webů, jen za ten certifikát neručí
+žádná autorita.
+
+Kdo napíše adresu bez `https://`, přistane na portu 4000 a rovnou se
+přesměruje na HTTPS. Nešifrovaně se neobslouží žádná data ani přihlášení —
+port 4000 umí jen přesměrovat.
 
 ## Heslo
 
@@ -37,6 +56,7 @@ Přihlášení platí 12 hodin nebo do restartu serveru.
 - `server/data.json` — živá data, po každé změně se předchozí verze odloží
   do `server/data.bak.json`
 - ani jeden soubor není v gitu, zálohovat se musí ručně (stačí zkopírovat)
+- v gitu není ani `server/auth.json` a `server/cert/` — patří jen na tenhle stroj
 
 **Přenos starých dat z prohlížeče:** v prohlížeči, kde žebříček dosud byl,
 otevřít konzoli (F12) a spustit `copy(localStorage.getItem('urlData'))`.
@@ -44,10 +64,13 @@ Obsah schránky vložit do `server/data.json` a restartovat server.
 
 ## Vývoj
 
-`npm start` běží na portu 3000 a data si sám bere ze serveru na portu 4000,
-takže je potřeba mít vedle spuštěné i `npm run server`.
+`npm start` běží na portu 3000 a data si sám bere ze serveru na portu 4443,
+takže je potřeba mít vedle spuštěné i `npm run server`. Napoprvé je nutné
+otevřít <https://localhost:4443> a odkliknout varování o certifikátu, jinak
+prohlížeč volání z vývojového serveru zablokuje.
+
 Jinou adresu serveru lze nastavit v `.env.local`:
-`REACT_APP_API_URL=http://192.168.0.15:4000`
+`REACT_APP_API_URL=https://192.168.0.15:4443`
 
 ## Verze na GitHub Pages
 
