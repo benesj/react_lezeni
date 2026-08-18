@@ -1,6 +1,7 @@
 // Vypíše QR kód s adresou serveru — naskenovat fotoaparátem telefonu.
 // Samostatně:  npm run qr
 const os = require("os");
+const path = require("path");
 const qrcode = require("qrcode-terminal");
 
 const HTTPS_PORT = Number(process.env.HTTPS_PORT) || 4443;
@@ -36,6 +37,26 @@ function vypisVse() {
   console.log("");
 }
 
-module.exports = { vypisVse, adresyVSiti };
+// Kromě výpisu do konzole se dá QR uložit jako obrázek — hodí se, když
+// se ASCII verze v terminálu rozsype nebo když ho chceš někomu poslat.
+async function ulozObrazek(adresa) {
+  const soubor = path.join(__dirname, "qr.png");
+  await require("qrcode").toFile(
+    soubor,
+    `https://${adresa}:${HTTPS_PORT}`,
+    { width: 600, margin: 2 }
+  );
+  return soubor;
+}
 
-if (require.main === module) vypisVse();
+module.exports = { vypisVse, adresyVSiti, ulozObrazek };
+
+if (require.main === module) {
+  vypisVse();
+  const [adresa] = adresyVSiti();
+  if (adresa) {
+    ulozObrazek(adresa).then((soubor) =>
+      console.log("  Obrázek: " + soubor)
+    );
+  }
+}

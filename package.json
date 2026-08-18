@@ -10,6 +10,7 @@
     "@testing-library/user-event": "^13.5.0",
     "env-cmd": "^11.0.0",
     "gh-pages": "^6.3.0",
+    "qrcode": "^1.5.4",
     "qrcode-terminal": "^0.12.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",

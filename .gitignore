@@ -30,3 +30,6 @@ yarn-error.log*
 
 # certifikát serveru — patří jen na tenhle stroj
 /server/cert
+
+# vygenerovaný QR obrázek
+/server/qr.png
