@@ -4,8 +4,16 @@ import { getToken, prihlas, pridejLezce, odeberLezce, pripisXp } from "./api";
 import "./App.css";
 
 // ✅ Pomocné validace
+// Celé číslo, klidně záporné — mínusem se dají body i odebrat.
 function isNumberOk(number) {
-  return !isNaN(number);
+  return /^-?\d+$/.test(String(number ?? "").trim());
+}
+
+// Telefonní klávesnice mínus nenabízí, proto tlačítko ±.
+function prehodZnamenko(hodnota) {
+  const text = String(hodnota ?? "").trim();
+  if (text.startsWith("-")) return text.slice(1);
+  return text ? "-" + text : "-";
 }
 
 // Sedí zadaný text na některého lezce? Bere celé jméno i samotné pořadové číslo.
@@ -57,13 +65,27 @@ const TextInputExample = ({
         onChange={(e) => onChangeSkupina(e.target.value)}
         placeholder="mladsi / starsi"
       />
-      <input
-        className={`input ${isNumberOk(number) ? "ok" : "not-ok"}`}
-        value={number || ""}
-        onChange={(e) => onChangeNumber(e.target.value)}
-        placeholder="lvl překážky"
-        type="number"
-      />
+      <div className="input-radek">
+        <input
+          className={`input ${isNumberOk(number) ? "ok" : "not-ok"}`}
+          value={number ?? ""}
+          // text + inputMode: na mobilu vyskočí číselná klávesnice,
+          // ale na rozdíl od type="number" jde napsat i mínus
+          onChange={(e) =>
+            /^-?\d*$/.test(e.target.value) && onChangeNumber(e.target.value)
+          }
+          placeholder="lvl překážky"
+          type="text"
+          inputMode="numeric"
+        />
+        <button
+          className="btn"
+          title="přepnout plus/mínus"
+          onClick={() => onChangeNumber(prehodZnamenko(number))}
+        >
+          ±
+        </button>
+      </div>
 
       <button
         className="btn green"
@@ -73,16 +95,16 @@ const TextInputExample = ({
           add(text, skupina, number)
         }
       >
-        přidej
+        nový člen
       </button>
       <button
         className="btn red"
         onClick={() => isTextOk(text, data) && remove(text)}
       >
-        odeber
+        odeber člena
       </button>
       <button
-        className="btn"
+        className="btn hlavni"
         onClick={() =>
           isTextOk(text, data) && isNumberOk(number) && vypocet(text, number)
         }
