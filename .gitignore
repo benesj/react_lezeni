@@ -33,3 +33,5 @@ yarn-error.log*
 
 # vygenerovaný QR obrázek
 /server/qr.png
+
+/server/data.json.presunuto

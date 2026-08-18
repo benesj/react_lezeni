@@ -2,9 +2,30 @@
 // Běží jen na serveru, takže se nic z toho nedostane do prohlížeče.
 const fs = require("fs");
 const path = require("path");
+const os = require("os");
 
-const DATA_FILE = path.join(__dirname, "data.json");
-const BACKUP_FILE = path.join(__dirname, "data.bak.json");
+// Data schválně NEleží u projektu — ten je na externím disku D:, který nemusí
+// být připojený. Ukládají se do profilu uživatele na systémovém disku.
+// Jiné umístění: proměnná DATA_DIR.
+const DATA_DIR =
+  process.env.DATA_DIR ||
+  path.join(process.env.APPDATA || os.homedir(), "lezecky-zebricek");
+
+const DATA_FILE = path.join(DATA_DIR, "data.json");
+const BACKUP_FILE = path.join(DATA_DIR, "data.bak.json");
+
+// Data z dřívějška ležela v server/data.json — jednorázově se přenesou.
+const STARY_SOUBOR = path.join(__dirname, "data.json");
+
+function pripravSlozku() {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  if (!fs.existsSync(DATA_FILE) && fs.existsSync(STARY_SOUBOR)) {
+    fs.copyFileSync(STARY_SOUBOR, DATA_FILE);
+    fs.renameSync(STARY_SOUBOR, STARY_SOUBOR + ".presunuto");
+    console.log("Data přenesena z " + STARY_SOUBOR + " do " + DATA_FILE);
+  }
+}
+pripravSlozku();
 
 const prazdnaData = () => ({ mladsi: [], starsi: [] });
 
@@ -27,6 +48,7 @@ function read() {
 // Zápis přes dočasný soubor, aby výpadek uprostřed zápisu nesmazal data.
 // Předchozí verze se vždy odloží do data.bak.json.
 function write(data) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
   const tmp = DATA_FILE + ".tmp";
   fs.writeFileSync(tmp, JSON.stringify(data, null, 2), "utf8");
   if (fs.existsSync(DATA_FILE)) fs.copyFileSync(DATA_FILE, BACKUP_FILE);
@@ -107,4 +129,4 @@ function nahrad(nova) {
   });
 }
 
-module.exports = { read, pridej, odeber, pridejXp, nahrad, DATA_FILE };
+module.exports = { read, pridej, odeber, pridejXp, nahrad, DATA_FILE, DATA_DIR };
