@@ -21,3 +21,9 @@
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# server — data a heslo zůstávají jen na tomhle PC
+/server/data.json
+/server/data.bak.json
+/server/data.json.tmp
+/server/auth.json
