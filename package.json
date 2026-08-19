@@ -20,7 +20,7 @@
   },
   "scripts": {
     "predeploy": "npm run build",
-    "deploy": "gh-pages -d build",
+    "deploy": "git subtree split --prefix build -b gh-pages-deploy && git push -f origin gh-pages-deploy:gh-pages && git branch -D gh-pages-deploy",
     "build:staging": "env-cmd -f .env.staging npm run build",
     "start": "react-scripts start",
     "build": "react-scripts build",

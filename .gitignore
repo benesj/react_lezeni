@@ -9,7 +9,7 @@
 /coverage
 
 # production
-/build
+# (build je schválně verzovaný — deploy na Pages ho bere z historie gitu)
 
 # misc
 .DS_Store
