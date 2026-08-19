@@ -65,6 +65,8 @@ C:\Users\<jméno>\AppData\Roaming\lezecky-zebricek\data.json
 - soubory nejsou v gitu, zálohovat se musí ručně (stačí zkopírovat)
 - jiné umístění: `$env:DATA_DIR="E:\zalohy\zebricek"; npm run server`
 - přesnou cestu server vypíše při startu
+- `npm run backup` udělá kopii s datem do podsložky `zalohy/`
+  (drží posledních 20)
 - v gitu není ani `server/auth.json` a `server/cert/` — patří jen na tenhle stroj
 
 **Přenos starých dat z prohlížeče:** v prohlížeči, kde žebříček dosud byl,
