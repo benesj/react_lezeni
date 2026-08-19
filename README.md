@@ -11,10 +11,11 @@ z internetu přes Cloudflare Tunnel.
 npm install          # jen poprvé
 npm run set-password # jen poprvé — nastaví admin heslo
 npm run build        # po každé změně kódu
-npm run doma         # tohle nechat běžet (server + tunel do internetu)
+npm run server       # tohle nechat běžet
 ```
 
-Kdo chce jen domácí síť bez přístupu zvenku, spustí místo toho `npm run server`.
+Takhle se to spouští jen při vývoji. Provoz doma běží sám z jiného adresáře —
+viz [Provoz na PC bez zásahu](#provoz-na-pc-bez-zásahu).
 
 Server po startu vypíše adresy, na kterých je dostupný, např.:
 
@@ -57,11 +58,16 @@ Přihlášení platí 12 hodin nebo do restartu serveru.
 ## Data
 
 Žebříček je uložený **na systémovém disku**, ne u projektu — ten leží na
-externím disku, který nemusí být připojený:
+externím disku, který nemusí být připojený. Kde přesně, závisí na tom, co běží:
 
 ```
-C:\Users\<jméno>\AppData\Roaming\lezecky-zebricek\data.json
+C:\ProgramData\lezecky-zebricek\data.json          <- provoz (naplánovaná úloha)
+C:\Users\<jméno>\AppData\Roaming\lezecky-zebricek\ <- vývoj (npm run server)
 ```
+
+Provozní data leží mimo profil, protože účet služby (`LOCAL SERVICE`) do
+uživatelského profilu nevidí. Cestu určuje proměnná `DATA_DIR`, kterou nastavuje
+`provoz.cmd`; bez ní se použije profil.
 
 - `data.json` — živá data; před každou změnou se předchozí verze odloží
   do `data.bak.json` vedle
@@ -74,7 +80,7 @@ C:\Users\<jméno>\AppData\Roaming\lezecky-zebricek\data.json
 
 **Přenos starých dat z prohlížeče:** v prohlížeči, kde žebříček dosud byl,
 otevřít konzoli (F12) a spustit `copy(localStorage.getItem('urlData'))`.
-Obsah schránky vložit do `server/data.json` a restartovat server.
+Obsah schránky vložit do `data.json` (cesta výše) a restartovat server.
 
 ## Vývoj
 
@@ -88,47 +94,65 @@ Jinou adresu serveru lze nastavit v `.env.local`:
 
 ## Přístup odkudkoli
 
-`npm run doma` vedle serveru spustí i **Cloudflare Tunnel** (`server/tunel.js`).
-Ten naváže *odchozí* spojení z PC k Cloudflare a zpřístupní server na veřejné
-https adrese. Na routeru se nic nepřesměrovává a PC není z internetu vidět —
-roura vede výhradně na `https://localhost:4443`.
+Server doma je z internetu dostupný na trvalé adrese:
 
-Použitý je *quick tunnel*, který nepotřebuje účet ani doménu. Jeho adresa
-(`*.trycloudflare.com`) se ale **při každém spuštění mění**, takže se nedá nikomu
-dát natrvalo. Řeší se to takhle:
+<https://laptop-1m8hk6du.tailb66ab5.ts.net>
 
-1. `tunel.js` po startu zapíše aktuální adresu do `tunnel-url.json` a pushne ji
-   na GitHub.
-2. Aplikace na GitHub Pages si při načtení tuhle adresu přečte a mluví s ní.
+Dělá to **Tailscale Funnel**. Tailscale na PC drží *odchozí* spojení do své sítě
+a Funnel na něm zpřístupní jeden port veřejně. Na routeru se nic nepřesměrovává
+a PC není z internetu vidět — provoz vede výhradně na `https://localhost:4443`.
+Certifikát je od Let's Encrypt, takže prohlížeč zvenku **nevaruje**.
 
-**Trvalý odkaz pro ostatní je tedy <https://benesj.github.io/react_lezeni>** —
-ten se nemění nikdy, měnící se tunel je schovaný za ním. Po restartu tunelu
-může chvíli (~5 min, cache GitHubu) ukazovat ještě na starou adresu.
+Zapnuto jednorázově příkazem:
 
-Certifikát na tunelu je od Cloudflare, takže zvenku prohlížeč **nevaruje**.
-Varování se týká jen přímého přístupu v domácí síti přes `https://<IP>:4443`.
-
-### Spuštění po startu Windows
-
-`server/autostart.cmd` počká, až bude dostupný disk s projektem, a pak spustí
-`npm run doma`. Pouští ho `lezecky-zebricek.vbs` ve složce Po spuštění
-(Startup), aby nebylo vidět okno:
-
-```
-%APPDATA%MicrosoftWindowsStart MenuProgramsStartuplezecky-zebricek.vbs
+```bash
+tailscale funnel --bg "https+insecure://localhost:4443"
 ```
 
-Autostart se zruší smazáním toho `.vbs`. Log: `%APPDATA%lezecky-zebricekautostart.log`.
+Nastavení si drží služba Tailscale, takže **po restartu PC se Funnel nahodí sám**
+a adresa zůstává pořád stejná. Vypnutí: `tailscale funnel --https=443 off`.
 
-Běží pod přihlášeným uživatelem, ne jako služba pod SYSTEM — server vystavený
-do internetu záměrně nemá běžet s plnými právy. Znamená to ale, že po restartu
-PC naskočí až po přihlášení do Windows.
+Předtím to jelo přes Cloudflare quick tunnel, jehož adresa se při každém spuštění
+měnila a musela se publikovat do `tunnel-url.json` na GitHub. S pevnou adresou je
+tahle mašinérie zbytečná, takže je odstraněná (`server/tunel.js`, `server/start.js`).
+
+Podmínkou je, že Funnel a HTTPS certifikáty musí být povolené pro celý tailnet
+(v admin konzoli Tailscale, sekce **DNS → HTTPS Certificates**).
+
+### Provoz na PC bez zásahu
+
+Aby žebříček jel jen z toho, že je PC zapnuté, běží mimo tenhle vývojový
+adresář — ten je na externím disku, který nemusí být připojený:
+
+| kde | co |
+| --- | --- |
+| `C:\lezecky-zebricek` | provozní klon z GitHubu (odsud běží server) |
+| `C:\ProgramData\lezecky-zebricek` | data, zálohy, `server.log` |
+| `C:\ProgramData\lezecky-zebricek\provoz.cmd` | spouštěč — mimo git, nastavení jen pro tenhle stroj |
+
+Spouští to **naplánovaná úloha `Lezecky zebricek`** (`At system start up`).
+`provoz.cmd` si nejdřív udělá `git pull`, takže **co se pushne na GitHub, to si
+provoz při dalším startu sám natáhne** — na provozní kopii se nic needituje.
+
+Úloha běží pod účtem **`NT AUTHORITY\LOCAL SERVICE`** s omezenými právy,
+záměrně ne pod SYSTEM: server je vystavený do internetu a nemá mít plná práva
+k počítači. Proto taky data neleží v profilu uživatele (tam účet služby nevidí)
+a bylo potřeba `git config --system --add safe.directory C:/lezecky-zebricek`.
+
+Ruční ovládání:
+
+```powershell
+schtasks /run   /tn "Lezecky zebricek"    # nahodit
+schtasks /end   /tn "Lezecky zebricek"    # zastavit
+Get-Content C:\ProgramData\lezecky-zebricek\server.log -Tail 30
+```
 
 ## Verze na GitHub Pages
 
 `npm run deploy` publikuje aplikaci na <https://benesj.github.io/react_lezeni>.
-Data si bere z domácího serveru přes tunel (viz výše), takže je to plnohodnotný
-sdílený žebříček. Když server doma neběží, ukáže naposledy načtená data z cache.
+Data si bere z domácího serveru přes tu trvalou adresu výše (je zapsaná
+v `src/api.js`), takže je to plnohodnotný sdílený žebříček. Když server doma
+neběží, ukáže naposledy načtená data z cache.
 
 ---
 
