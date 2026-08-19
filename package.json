@@ -29,7 +29,9 @@
     "server": "node server/server.js",
     "set-password": "node server/set-password.js",
     "qr": "node server/qr.js",
-    "backup": "node server/backup.js"
+    "backup": "node server/backup.js",
+    "tunel": "node server/tunel.js",
+    "doma": "node server/start.js"
   },
   "eslintConfig": {
     "extends": [
