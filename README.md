@@ -1,8 +1,9 @@
 # Žebříček lezeckého kroužku
 
 Data má na starosti malý server běžící na domácím PC (`server/`). Ukládá je do
-`server/data.json` a zároveň rozdává hotovou aplikaci, takže všichni v síti
-vidí a mění jeden společný žebříček.
+profilu uživatele (viz [Data](#data)) a zároveň rozdává hotovou aplikaci, takže
+všichni vidí a mění jeden společný žebříček — v domácí wifi i odkudkoli
+z internetu přes Cloudflare Tunnel.
 
 ## Spuštění
 
@@ -10,8 +11,10 @@ vidí a mění jeden společný žebříček.
 npm install          # jen poprvé
 npm run set-password # jen poprvé — nastaví admin heslo
 npm run build        # po každé změně kódu
-npm run server       # tohle nechat běžet
+npm run doma         # tohle nechat běžet (server + tunel do internetu)
 ```
+
+Kdo chce jen domácí síť bez přístupu zvenku, spustí místo toho `npm run server`.
 
 Server po startu vypíše adresy, na kterých je dostupný, např.:
 
@@ -83,13 +86,49 @@ prohlížeč volání z vývojového serveru zablokuje.
 Jinou adresu serveru lze nastavit v `.env.local`:
 `REACT_APP_API_URL=https://192.168.0.15:4443`
 
+## Přístup odkudkoli
+
+`npm run doma` vedle serveru spustí i **Cloudflare Tunnel** (`server/tunel.js`).
+Ten naváže *odchozí* spojení z PC k Cloudflare a zpřístupní server na veřejné
+https adrese. Na routeru se nic nepřesměrovává a PC není z internetu vidět —
+roura vede výhradně na `https://localhost:4443`.
+
+Použitý je *quick tunnel*, který nepotřebuje účet ani doménu. Jeho adresa
+(`*.trycloudflare.com`) se ale **při každém spuštění mění**, takže se nedá nikomu
+dát natrvalo. Řeší se to takhle:
+
+1. `tunel.js` po startu zapíše aktuální adresu do `tunnel-url.json` a pushne ji
+   na GitHub.
+2. Aplikace na GitHub Pages si při načtení tuhle adresu přečte a mluví s ní.
+
+**Trvalý odkaz pro ostatní je tedy <https://benesj.github.io/react_lezeni>** —
+ten se nemění nikdy, měnící se tunel je schovaný za ním. Po restartu tunelu
+může chvíli (~5 min, cache GitHubu) ukazovat ještě na starou adresu.
+
+Certifikát na tunelu je od Cloudflare, takže zvenku prohlížeč **nevaruje**.
+Varování se týká jen přímého přístupu v domácí síti přes `https://<IP>:4443`.
+
+### Spuštění po startu Windows
+
+`server/autostart.cmd` počká, až bude dostupný disk s projektem, a pak spustí
+`npm run doma`. Pouští ho `lezecky-zebricek.vbs` ve složce Po spuštění
+(Startup), aby nebylo vidět okno:
+
+```
+%APPDATA%MicrosoftWindowsStart MenuProgramsStartuplezecky-zebricek.vbs
+```
+
+Autostart se zruší smazáním toho `.vbs`. Log: `%APPDATA%lezecky-zebricekautostart.log`.
+
+Běží pod přihlášeným uživatelem, ne jako služba pod SYSTEM — server vystavený
+do internetu záměrně nemá běžet s plnými právy. Znamená to ale, že po restartu
+PC naskočí až po přihlášení do Windows.
+
 ## Verze na GitHub Pages
 
-`npm run deploy` publikuje aplikaci na
-<https://benesj.github.io/react_lezeni>. Ta se ale k serveru doma nedostane
-(stránka jede přes https, domácí server přes http v lokální síti — prohlížeč
-takové volání zablokuje), takže bude jen zobrazovat naposledy načtená data.
-Sdílený žebříček funguje přes adresu z `npm run server`.
+`npm run deploy` publikuje aplikaci na <https://benesj.github.io/react_lezeni>.
+Data si bere z domácího serveru přes tunel (viz výše), takže je to plnohodnotný
+sdílený žebříček. Když server doma neběží, ukáže naposledy načtená data z cache.
 
 ---
 

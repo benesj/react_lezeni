@@ -35,3 +35,6 @@ yarn-error.log*
 /server/qr.png
 
 /server/data.json.presunuto
+
+# log autostartu (vzniká při běhu)
+/server/posledni-start*.log
