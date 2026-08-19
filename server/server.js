@@ -52,7 +52,10 @@ function nactiTelo(req) {
     let raw = "";
     req.on("data", (chunk) => {
       raw += chunk;
-      if (raw.length > 1e6) reject(new Error("Požadavek je moc velký"));
+      if (raw.length > 1e6) {
+        req.destroy(); // jinak by se data hrnula dál do paměti
+        reject(new Error("Požadavek je moc velký"));
+      }
     });
     req.on("end", () => {
       try {
@@ -70,6 +73,18 @@ const jePrihlasen = (req) => {
   return auth.jePlatny(hlavicka.replace(/^Bearer\s+/i, ""));
 };
 
+// Přes tunel chodí všechno z localhostu, skutečnou adresu posílá Cloudflare
+// v hlavičce — bez toho by brzda platila společně pro všechny.
+// Věřit se jí ale smí jen u spojení z loopbacku (tj. od tunelu). Kdo se
+// připojí přímo v síti, by si jinak hlavičku vymyslel a brzdu obešel.
+const LOOPBACK = ["127.0.0.1", "::1", "::ffff:127.0.0.1"];
+const adresaZadatele = (req) => {
+  const socket = req.socket.remoteAddress || "";
+  const cf = req.headers["cf-connecting-ip"];
+  if (cf && LOOPBACK.includes(socket)) return String(cf).split(",")[0].trim();
+  return socket;
+};
+
 // Jednoduchá brzda na hádání hesla: max 10 pokusů za minutu z jedné adresy.
 const pokusy = new Map();
 function prilisMnohoPokusu(ip) {
@@ -77,7 +92,22 @@ function prilisMnohoPokusu(ip) {
   const seznam = (pokusy.get(ip) || []).filter((t) => ted - t < 60_000);
   seznam.push(ted);
   pokusy.set(ip, seznam);
+  if (pokusy.size > 1000) {
+    for (const [klic, casy] of pokusy) {
+      if (!casy.some((t) => ted - t < 60_000)) pokusy.delete(klic);
+    }
+  }
   return seznam.length > 10;
+}
+
+// Druhá brzda přes všechny adresy dohromady: jednu IP jde střídat, tohle
+// zpomalí i hádání z víc míst najednou.
+let vsechnyPokusy = [];
+function prilisMnohoCelkem() {
+  const ted = Date.now();
+  vsechnyPokusy = vsechnyPokusy.filter((t) => ted - t < 60_000);
+  vsechnyPokusy.push(ted);
+  return vsechnyPokusy.length > 60;
 }
 
 async function api(req, res, cesta) {
@@ -88,7 +118,7 @@ async function api(req, res, cesta) {
   }
 
   if (cesta === "/api/login" && req.method === "POST") {
-    if (prilisMnohoPokusu(req.socket.remoteAddress)) {
+    if (prilisMnohoPokusu(adresaZadatele(req)) || prilisMnohoCelkem()) {
       return posli(res, 429, { error: "Moc pokusů, zkus to za chvíli." });
     }
     if (!auth.jeNastaveno()) {
