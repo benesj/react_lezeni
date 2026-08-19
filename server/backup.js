@@ -1,9 +1,9 @@
 // Ruční záloha žebříčku:  npm run backup
-// Uloží kopii dat s datem do podsložky zalohy/ a starší postupně maže,
+// Uloží kopii všech skupin s datem do podsložky zalohy/ a starší postupně maže,
 // ať to nebobtná. Nechává posledních 20.
 const fs = require("fs");
 const path = require("path");
-const { DATA_FILE, DATA_DIR } = require("./store");
+const { SKUPINY_DIR, DATA_DIR } = require("./store");
 
 const KOLIK_NECHAT = 20;
 const SLOZKA = path.join(DATA_DIR, "zalohy");
@@ -20,21 +20,28 @@ function razitko() {
   );
 }
 
-if (!fs.existsSync(DATA_FILE)) {
-  console.log("Zatím není co zálohovat — " + DATA_FILE + " neexistuje.");
+const soubory = fs.existsSync(SKUPINY_DIR)
+  ? fs.readdirSync(SKUPINY_DIR).filter((f) => f.endsWith(".json") && !f.endsWith(".bak.json"))
+  : [];
+
+if (!soubory.length) {
+  console.log("Zatím není co zálohovat — ve " + SKUPINY_DIR + " nejsou skupiny.");
   process.exit(0);
 }
 
-fs.mkdirSync(SLOZKA, { recursive: true });
-const cil = path.join(SLOZKA, "data-" + razitko() + ".json");
-fs.copyFileSync(DATA_FILE, cil);
-console.log("Záloha: " + cil);
+// Každá záloha je vlastní podsložka skupiny-<datum>/, uvnitř soubory skupin.
+const cil = path.join(SLOZKA, "skupiny-" + razitko());
+fs.mkdirSync(cil, { recursive: true });
+soubory.forEach((f) =>
+  fs.copyFileSync(path.join(SKUPINY_DIR, f), path.join(cil, f))
+);
+console.log("Záloha: " + cil + " (" + soubory.length + " skupin)");
 
 const stare = fs
   .readdirSync(SLOZKA)
-  .filter((f) => f.startsWith("data-") && f.endsWith(".json"))
+  .filter((f) => f.startsWith("skupiny-"))
   .sort()
   .slice(0, -KOLIK_NECHAT);
 
-stare.forEach((f) => fs.unlinkSync(path.join(SLOZKA, f)));
+stare.forEach((f) => fs.rmSync(path.join(SLOZKA, f), { recursive: true, force: true }));
 if (stare.length) console.log("Smazáno starých záloh: " + stare.length);

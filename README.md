@@ -1,9 +1,12 @@
 # Žebříček lezeckého kroužku
 
-Data má na starosti malý server běžící na domácím PC (`server/`). Ukládá je do
-profilu uživatele (viz [Data](#data)) a zároveň rozdává hotovou aplikaci, takže
+Data má na starosti malý server běžící na domácím PC (`server/`). Ukládá je na
+systémový disk (viz [Data](#data)) a zároveň rozdává hotovou aplikaci, takže
 všichni vidí a mění jeden společný žebříček — v domácí wifi i odkudkoli
-z internetu přes Cloudflare Tunnel.
+z internetu přes [Tailscale Funnel](#přístup-odkudkoli).
+
+Kroužek může mít víc skupin (part) a každá má vlastní žebříček i vlastní zámek —
+viz [Skupiny a zámek](#skupiny-a-zámek).
 
 ## Spuštění
 
@@ -55,32 +58,68 @@ sůl — heslo samotné nikde uložené není a do prohlížeče se nedostane.
 Soubor není v gitu ani v buildu. Změna hesla: `npm run set-password`.
 Přihlášení platí 12 hodin nebo do restartu serveru.
 
+## Skupiny a zámek
+
+Kroužek může mít víc skupin (např. víc part v týdnu). Každá je samostatný
+žebříček s dělením na mladší a starší a **s vlastním zámkem**. V aplikaci se
+mezi nimi přepíná záložkami nahoře, u každé svítí 🔓 nebo 🔒.
+
+Zámek je navržený na tenhle běh tréninku:
+
+| kdy | kdo | co udělá |
+| --- | --- | --- |
+| začátek tréninku | správce (heslo) | *odemkne* svou skupinu |
+| během tréninku | děti, bez hesla | zapisují si body |
+| konec tréninku | správce (heslo) | *zamkne* |
+| doma | kdokoli | žebříček **jen vidí**, změnit nejde |
+
+- Zápisy (`/api/add`, `/api/remove`, `/api/xp`) heslo nechtějí — stačí, že je
+  skupina odemčená. U zamčené je server odmítne („Skupina je zamčená"), takže to
+  neobejde ani ten, kdo by šel na API mimo aplikaci.
+- Heslo je potřeba na **zámek a strukturu**: odemknout/zamknout, zakládat a mazat
+  skupiny, importovat data. Odemčení tedy dovoluje měnit body, ne přestavovat
+  žebříček.
+- Příznak zámku se ukládá k datům, takže **přežije restart serveru** — co se
+  zamklo, zůstane zamčené.
+- Nová skupina vzniká **zamčená**.
+- Zamčenou skupinu aplikace ani nenabízí k editaci — formulář je skrytý a místo
+  něj je „Zamčeno, jde jen prohlížet".
+- Smazaná skupina se nezahodí: soubor se odloží do `smazane/` s datem. Poslední
+  skupinu smazat nejde.
+
 ## Data
 
 Žebříček je uložený **na systémovém disku**, ne u projektu — ten leží na
 externím disku, který nemusí být připojený. Kde přesně, závisí na tom, co běží:
 
 ```
-C:\ProgramData\lezecky-zebricek\data.json          <- provoz (naplánovaná úloha)
-C:\Users\<jméno>\AppData\Roaming\lezecky-zebricek\ <- vývoj (npm run server)
+C:\ProgramData\lezecky-zebricek\skupiny\            <- provoz (naplánovaná úloha)
+C:\Users\<jméno>\AppData\Roaming\lezecky-zebricek\  <- vývoj (npm run server)
 ```
+
+Každá skupina je vlastní soubor `skupiny/<id>.json` (id se udělá z názvu,
+např. „Pondělní parta" → `pondelni-parta.json`). Uvnitř je název, příznak
+`odemceno`, datum vzniku a seznamy `mladsi` / `starsi`. Starší jediný
+`data.json` se při prvním startu sám převede na skupinu `hlavni` a odloží
+jako `data.json.prevedeno`.
 
 Provozní data leží mimo profil, protože účet služby (`LOCAL SERVICE`) do
 uživatelského profilu nevidí. Cestu určuje proměnná `DATA_DIR`, kterou nastavuje
 `provoz.cmd`; bez ní se použije profil.
 
-- `data.json` — živá data; před každou změnou se předchozí verze odloží
-  do `data.bak.json` vedle
+- před každou změnou se předchozí verze skupiny odloží vedle jako
+  `<id>.bak.json`
 - soubory nejsou v gitu, zálohovat se musí ručně (stačí zkopírovat)
 - jiné umístění: `$env:DATA_DIR="E:\zalohy\zebricek"; npm run server`
 - přesnou cestu server vypíše při startu
-- `npm run backup` udělá kopii s datem do podsložky `zalohy/`
+- `npm run backup` uloží kopii všech skupin do `zalohy\skupiny-<datum>\`
   (drží posledních 20)
 - v gitu není ani `server/auth.json` a `server/cert/` — patří jen na tenhle stroj
 
 **Přenos starých dat z prohlížeče:** v prohlížeči, kde žebříček dosud byl,
 otevřít konzoli (F12) a spustit `copy(localStorage.getItem('urlData'))`.
-Obsah schránky vložit do `data.json` (cesta výše) a restartovat server.
+Obsah schránky vložit do `mladsi`/`starsi` v souboru té skupiny (cesta výše)
+a restartovat server.
 
 ## Vývoj
 

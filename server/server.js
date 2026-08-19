@@ -110,6 +110,16 @@ function prilisMnohoCelkem() {
   return vsechnyPokusy.length > 60;
 }
 
+// Odemčenou skupinu smí měnit kdokoli s odkazem, takže ať se aspoň nedá
+// serveru zaplnit disk zápisy — víc než 120 změn za minutu nikdo nepotřebuje.
+let zapisy = [];
+function prilisMnohoZapisu() {
+  const ted = Date.now();
+  zapisy = zapisy.filter((t) => ted - t < 60_000);
+  zapisy.push(ted);
+  return zapisy.length > 120;
+}
+
 async function api(req, res, cesta) {
   if (req.method === "OPTIONS") return posli(res, 204, {});
 
@@ -133,30 +143,56 @@ async function api(req, res, cesta) {
     return posli(res, 200, { token: auth.vytvorToken() });
   }
 
-  // Od tohohle místa dál se musí být přihlášen.
-  const zapisove = ["/api/add", "/api/remove", "/api/xp", "/api/import"];
-  if (zapisove.includes(cesta)) {
+  // Správcovské akce — zámek a zakládání/mazání skupin. Na tyhle je potřeba
+  // heslo (resp. token z /api/login), i když je nějaká skupina odemčená:
+  // odemčení dovoluje měnit body, ne přestavovat strukturu žebříčku.
+  const spravcovske = ["/api/zamek", "/api/skupina", "/api/skupina/smaz", "/api/import"];
+  if (spravcovske.includes(cesta)) {
     if (req.method !== "POST")
       return posli(res, 405, { error: "Špatná metoda" });
     if (!jePrihlasen(req)) return posli(res, 401, { error: "Nepřihlášen" });
 
     const telo = await nactiTelo(req);
 
-    if (cesta === "/api/add") {
-      const { jmeno, skupina, xp } = telo;
-      if (!jmeno || !["mladsi", "starsi"].includes(skupina)) {
-        return posli(res, 400, { error: "Chybí jméno nebo skupina" });
-      }
-      return posli(res, 200, store.pridej(jmeno, skupina, xp));
+    if (cesta === "/api/zamek") {
+      return posli(res, 200, store.nastavZamek(telo.id, telo.odemceno));
     }
-    if (cesta === "/api/remove") {
-      return posli(res, 200, store.odeber(telo.identifier));
+    if (cesta === "/api/skupina") {
+      const { stav, id } = store.vytvorSkupinu(telo.nazev);
+      return posli(res, 200, { ...stav, novaSkupina: id });
     }
-    if (cesta === "/api/xp") {
-      return posli(res, 200, store.pridejXp(telo.identifier, telo.stena));
+    if (cesta === "/api/skupina/smaz") {
+      return posli(res, 200, store.smazSkupinu(telo.id));
     }
     if (cesta === "/api/import") {
-      return posli(res, 200, store.nahrad(telo.data));
+      return posli(res, 200, store.nahrad(telo.id, telo.data));
+    }
+  }
+
+  // Změny bodů a členů. Heslo se tady nechce — stačí, že je skupina odemčená
+  // (odemyká ji správce a zamčenou skupinu store.js měnit nedovolí).
+  const datove = ["/api/add", "/api/remove", "/api/xp"];
+  if (datove.includes(cesta)) {
+    if (req.method !== "POST")
+      return posli(res, 405, { error: "Špatná metoda" });
+    if (prilisMnohoZapisu()) {
+      return posli(res, 429, { error: "Moc změn za sebou, zkus to za chvíli." });
+    }
+
+    const telo = await nactiTelo(req);
+
+    if (cesta === "/api/add") {
+      const { id, jmeno, kategorie, xp } = telo;
+      if (!jmeno || !["mladsi", "starsi"].includes(kategorie)) {
+        return posli(res, 400, { error: "Chybí jméno nebo kategorie" });
+      }
+      return posli(res, 200, store.pridej(id, jmeno, kategorie, xp));
+    }
+    if (cesta === "/api/remove") {
+      return posli(res, 200, store.odeber(telo.id, telo.identifier));
+    }
+    if (cesta === "/api/xp") {
+      return posli(res, 200, store.pridejXp(telo.id, telo.identifier, telo.stena));
     }
   }
 
@@ -225,8 +261,15 @@ async function start() {
     const { ip } = cert.adresy();
     const vSiti = ip.filter((a) => a !== "127.0.0.1");
 
+    const skupiny = store.read().skupiny;
     console.log("Server žebříčku běží (HTTPS).");
-    console.log("  data:    " + store.DATA_FILE);
+    console.log("  data:    " + store.SKUPINY_DIR);
+    console.log(
+      "  skupiny: " +
+        skupiny
+          .map((s) => s.nazev + (s.odemceno ? " (odemčeno)" : " (zamčeno)"))
+          .join(", "),
+    );
     console.log("  cert:    " + cert.CERT_FILE);
     console.log("  místně:  https://localhost:" + HTTPS_PORT);
     vSiti.forEach((a) =>

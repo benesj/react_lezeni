@@ -80,3 +80,44 @@
   border-radius: 6px;
 }
 
+
+/* --- lezecké skupiny (každá má vlastní žebříček i zámek) --- */
+
+.skupiny-radek {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.tab {
+  padding: 8px 12px;
+  border: 1px solid #555;
+  background-color: #222;
+  color: #ccc;
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+.tab.aktivni {
+  background-color: #f57c00;
+  border-color: #f57c00;
+  color: white;
+  font-weight: bold;
+}
+
+/* panel správce — oddělený, ať se neplete s běžnými akcemi */
+.spravce {
+  margin-top: 24px;
+  padding-top: 10px;
+  border-top: 1px solid #444;
+}
+
+/* nenápadný vstup do správce, ať netlačí na běžného návštěvníka */
+.btn.odkaz {
+  margin-top: 20px;
+  background: none;
+  color: #888;
+  text-decoration: underline;
+  padding: 4px 0;
+}
