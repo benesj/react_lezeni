@@ -87,13 +87,13 @@ const IKONY = {
       <g fill="none" strokeLinecap="round" strokeLinejoin="round">
         <path
           d="M32 22 C32 16 38 14 50 14 C62 14 68 16 68 22 L66 60 C66 70 58 74 50 74 C42 74 34 70 34 60 Z"
-          fill="#6a3fb5"
-          stroke="#3f2478"
+          fill="#c62828"
+          stroke="#7f1d1d"
           strokeWidth="3"
         />
-        <path d="M34 30 C40 26 60 26 66 30" stroke="#3f2478" strokeWidth="3" />
-        <rect x="36" y="34" width="11" height="30" rx="5.5" fill="#1c1c1c" stroke="#3f2478" strokeWidth="2" />
-        <rect x="53" y="34" width="11" height="30" rx="5.5" fill="#1c1c1c" stroke="#3f2478" strokeWidth="2" />
+        <path d="M34 30 C40 26 60 26 66 30" stroke="#7f1d1d" strokeWidth="3" />
+        <rect x="36" y="34" width="11" height="30" rx="5.5" fill="#1c1c1c" stroke="#7f1d1d" strokeWidth="2" />
+        <rect x="53" y="34" width="11" height="30" rx="5.5" fill="#1c1c1c" stroke="#7f1d1d" strokeWidth="2" />
         <path d="M38 74 C36 90 64 90 62 74" stroke="#c0c0c0" strokeWidth="3" />
         <path d="M44 16 C44 8 56 8 56 16" stroke="#c0c0c0" strokeWidth="3" />
       </g>
