@@ -121,3 +121,125 @@
   text-decoration: underline;
   padding: 4px 0;
 }
+
+
+/* --- režimy zámku, kategorie, medaile --- */
+
+.rezimy {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0;
+}
+
+.popis-rezimu {
+  color: #999;
+  font-size: 14px;
+  margin: 4px 0 10px;
+}
+
+.admin-blok {
+  margin-top: 14px;
+  padding-top: 6px;
+  border-top: 1px dashed #444;
+}
+
+/* select vypadá jako ostatní pole */
+select.input {
+  width: calc(100% - 24px);
+}
+
+.kategorie {
+  margin-top: 8px;
+}
+
+.radek-lezce {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+}
+
+/* místo pro medaili, ať jsou jména pod sebou zarovnaná */
+.umisteni {
+  display: inline-flex;
+  width: 34px;
+  justify-content: center;
+}
+
+.medaile {
+  width: 30px;
+  height: 39px;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6));
+}
+
+.btn.odkaz.maly {
+  margin: 0 0 0 10px;
+  font-size: 12px;
+  font-weight: normal;
+}
+
+
+/* --- efekty --- */
+
+/* červený záblesk při ubrání bodů (jako zásah v Minecraftu) */
+.blesk {
+  position: fixed;
+  inset: 0;
+  background: rgba(255, 0, 0, 0.55);
+  pointer-events: none;
+  z-index: 150;
+  animation: blesk-zhasni 0.6s ease-out forwards;
+}
+
+@keyframes blesk-zhasni {
+  0% { opacity: 1; }
+  30% { opacity: 0.7; }
+  100% { opacity: 0; }
+}
+
+/* hláška při přeskočení někoho v žebříčku */
+.preskoceni {
+  position: fixed;
+  left: 50%;
+  top: 30%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  pointer-events: none;
+  z-index: 200; /* nad plátnem konfet (canvas-confetti má 100) */
+  animation: preskoceni-vjezd 3.2s ease-out forwards;
+}
+
+.preskoceni-kdo {
+  font-size: 44px;
+  font-weight: 900;
+  letter-spacing: 1px;
+  background: linear-gradient(90deg, #ffd700, #ff4081, #00e5ff, #76ff03, #ffd700);
+  background-size: 400% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: duha 1.2s linear infinite;
+  text-shadow: none;
+}
+
+.preskoceni-text {
+  margin-top: 6px;
+  font-size: 22px;
+  font-weight: bold;
+  color: #fff;
+  text-shadow: 0 0 12px #ffd700, 0 2px 4px #000;
+}
+
+@keyframes preskoceni-vjezd {
+  0% { transform: translate(-50%, -50%) scale(0.2) rotate(-10deg); opacity: 0; }
+  12% { transform: translate(-50%, -50%) scale(1.25) rotate(3deg); opacity: 1; }
+  20% { transform: translate(-50%, -50%) scale(1) rotate(0deg); }
+  80% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(1.1); opacity: 0; }
+}
+
+@keyframes duha {
+  from { background-position: 0% 50%; }
+  to { background-position: 400% 50%; }
+}

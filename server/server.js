@@ -143,9 +143,9 @@ async function api(req, res, cesta) {
     return posli(res, 200, { token: auth.vytvorToken() });
   }
 
-  // Správcovské akce — zámek a zakládání/mazání skupin. Na tyhle je potřeba
-  // heslo (resp. token z /api/login), i když je nějaká skupina odemčená:
-  // odemčení dovoluje měnit body, ne přestavovat strukturu žebříčku.
+  // Správcovské akce — režim zámku a zakládání/mazání skupin. Na tyhle je
+  // potřeba heslo (resp. token z /api/login) bez ohledu na režim skupiny:
+  // režim dovoluje měnit žebříček, ne přestavovat skupiny.
   const spravcovske = ["/api/zamek", "/api/skupina", "/api/skupina/smaz", "/api/import"];
   if (spravcovske.includes(cesta)) {
     if (req.method !== "POST")
@@ -155,7 +155,10 @@ async function api(req, res, cesta) {
     const telo = await nactiTelo(req);
 
     if (cesta === "/api/zamek") {
-      return posli(res, 200, store.nastavZamek(telo.id, telo.odemceno));
+      // starší klient posílá boolean `odemceno` — převede se na režim
+      const rezim =
+        telo.rezim ?? (telo.odemceno === true ? "admin" : "zamceno");
+      return posli(res, 200, store.nastavRezim(telo.id, rezim));
     }
     if (cesta === "/api/skupina") {
       const { stav, id } = store.vytvorSkupinu(telo.nazev);
@@ -169,9 +172,15 @@ async function api(req, res, cesta) {
     }
   }
 
-  // Změny bodů a členů. Heslo se tady nechce — stačí, že je skupina odemčená
-  // (odemyká ji správce a zamčenou skupinu store.js měnit nedovolí).
-  const datove = ["/api/add", "/api/remove", "/api/xp"];
+  // Změny žebříčku. Heslo se tady nechce — rozhoduje režim skupiny, který
+  // hlídá store.js: „body“ pustí jen přičtení bodů, „admin“ všechno ostatní.
+  const datove = [
+    "/api/add",
+    "/api/remove",
+    "/api/xp",
+    "/api/kategorie",
+    "/api/kategorie/smaz",
+  ];
   if (datove.includes(cesta)) {
     if (req.method !== "POST")
       return posli(res, 405, { error: "Špatná metoda" });
@@ -183,7 +192,7 @@ async function api(req, res, cesta) {
 
     if (cesta === "/api/add") {
       const { id, jmeno, kategorie, xp } = telo;
-      if (!jmeno || !["mladsi", "starsi"].includes(kategorie)) {
+      if (!jmeno || !kategorie) {
         return posli(res, 400, { error: "Chybí jméno nebo kategorie" });
       }
       return posli(res, 200, store.pridej(id, jmeno, kategorie, xp));
@@ -193,6 +202,12 @@ async function api(req, res, cesta) {
     }
     if (cesta === "/api/xp") {
       return posli(res, 200, store.pridejXp(telo.id, telo.identifier, telo.stena));
+    }
+    if (cesta === "/api/kategorie") {
+      return posli(res, 200, store.pridejKategorii(telo.id, telo.nazev));
+    }
+    if (cesta === "/api/kategorie/smaz") {
+      return posli(res, 200, store.smazKategorii(telo.id, telo.kategorie));
     }
   }
 
@@ -267,7 +282,7 @@ async function start() {
     console.log(
       "  skupiny: " +
         skupiny
-          .map((s) => s.nazev + (s.odemceno ? " (odemčeno)" : " (zamčeno)"))
+          .map((s) => s.nazev + " (" + s.rezim + ")")
           .join(", "),
     );
     console.log("  cert:    " + cert.CERT_FILE);

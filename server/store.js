@@ -2,8 +2,16 @@
 // Běží jen na serveru, takže se nic z toho nedostane do prohlížeče.
 //
 // Každá lezecká skupina (kroužek) má vlastní soubor ve složce skupiny/.
-// V souboru je dělení na mladší/starší, název skupiny a příznak zámku:
-// když je skupina zamčená, data se z aplikace měnit nedají.
+// Uvnitř je název, režim zámku a seznam kategorií (např. „Mladší“, „Starší“,
+// „Pokročilí“…), každá kategorie má vlastní žebříček lezců. Nová skupina
+// vzniká bez kategorií — přidávají se až v aplikaci.
+//
+// Režim zámku (rezim) má tři stupně:
+//   zamceno – nikdo nic nemění, jde jen prohlížet
+//   body    – kdokoli smí lezcům body jen PŘIDÁVAT
+//   admin   – kdokoli smí přidávat i odebírat body, přidávat/odebírat lezce
+//             a zakládat kategorie (to, co dřív uměla „odemčená“ skupina)
+// Režim přepíná jen správce heslem (server.js).
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
@@ -23,6 +31,11 @@ const STARY_U_PROJEKTU = path.join(__dirname, "data.json");
 const VYCHOZI_ID = "hlavni";
 const VYCHOZI_NAZEV = "Hlavní";
 const MAX_SKUPIN = 50;
+const MAX_KATEGORII = 20;
+
+const REZIMY = ["zamceno", "body", "admin"];
+// Pořadí důležitosti: co smí „body“, smí i „admin“.
+const UROVEN = { zamceno: 0, body: 1, admin: 2 };
 
 // id skupiny je zároveň jméno souboru, takže se povolují jen bezpečné znaky
 // (jinak by se dalo přes ../ psát mimo složku s daty).
@@ -48,10 +61,9 @@ function naId(nazev) {
 
 const prazdnaSkupina = (nazev) => ({
   nazev: String(nazev || VYCHOZI_NAZEV).trim().slice(0, 60) || VYCHOZI_NAZEV,
-  odemceno: false,
+  rezim: "zamceno",
   vytvoreno: new Date().toISOString(),
-  mladsi: [],
-  starsi: [],
+  kategorie: [],
 });
 
 const ocistiLezce = (pole) =>
@@ -59,15 +71,42 @@ const ocistiLezce = (pole) =>
     .filter((e) => e && typeof e.jmeno === "string")
     .map((e) => ({ jmeno: e.jmeno, xp: Number(e.xp) || 0 }));
 
+// Kategorie ze souboru — nebo převod ze starého tvaru s pevným
+// mladsi/starsi (převádí se jen ty, ve kterých někdo je, prázdné
+// „výchozí“ kategorie už nikdo nechce).
+function ocistiKategorie(parsed) {
+  if (Array.isArray(parsed?.kategorie)) {
+    const videna = new Set();
+    return parsed.kategorie
+      .filter((k) => k && jeIdOk(k.id) && !videna.has(k.id) && videna.add(k.id))
+      .slice(0, MAX_KATEGORII)
+      .map((k) => ({
+        id: k.id,
+        nazev: String(k.nazev || k.id).trim().slice(0, 40) || k.id,
+        lezci: ocistiLezce(k.lezci),
+      }));
+  }
+  const stare = [
+    { id: "mladsi", nazev: "Mladší", lezci: ocistiLezce(parsed?.mladsi) },
+    { id: "starsi", nazev: "Starší", lezci: ocistiLezce(parsed?.starsi) },
+  ];
+  return stare.filter((k) => k.lezci.length > 0);
+}
+
+// Režim ze souboru; starý boolean `odemceno` se převede (true = admin).
+function ocistiRezim(parsed) {
+  if (REZIMY.includes(parsed?.rezim)) return parsed.rezim;
+  return parsed?.odemceno === true ? "admin" : "zamceno";
+}
+
 // Souboru na disku se nevěří — vždy se dosadí známý tvar.
 function ocisti(id, parsed) {
   return {
     id,
     nazev: String(parsed?.nazev || id).trim().slice(0, 60) || id,
-    odemceno: parsed?.odemceno === true,
+    rezim: ocistiRezim(parsed),
     vytvoreno: typeof parsed?.vytvoreno === "string" ? parsed.vytvoreno : "",
-    mladsi: ocistiLezce(parsed?.mladsi),
-    starsi: ocistiLezce(parsed?.starsi),
+    kategorie: ocistiKategorie(parsed),
   };
 }
 
@@ -125,8 +164,7 @@ function pripravSlozku() {
   if (fs.existsSync(STARY_JEDEN)) {
     try {
       const stara = JSON.parse(fs.readFileSync(STARY_JEDEN, "utf8"));
-      nova.mladsi = ocistiLezce(stara?.mladsi);
-      nova.starsi = ocistiLezce(stara?.starsi);
+      nova.kategorie = ocistiKategorie(stara);
     } catch (e) {
       console.error("Starý data.json se nepodařilo přečíst:", e.message);
     }
@@ -151,12 +189,17 @@ function read() {
   return { skupiny };
 }
 
-// Skupina, se kterou se má pracovat. Hlídá i zámek — zamčenou nikdo nezmění.
-function proZapis(id, { musiBytOdemcena = true } = {}) {
+// Skupina, se kterou se má pracovat. Hlídá i zámek: `potreba` říká, jaký
+// režim akce vyžaduje (null = bez kontroly, to si dovolí jen správce).
+function proZapis(id, potreba) {
   const skupina = ctiSkupinu(id);
   if (!skupina) throw new Error("Skupina neexistuje");
-  if (musiBytOdemcena && !skupina.odemceno) {
-    throw new Error("Skupina je zamčená");
+  if (potreba && UROVEN[skupina.rezim] < UROVEN[potreba]) {
+    throw new Error(
+      skupina.rezim === "zamceno"
+        ? "Skupina je zamčená"
+        : "V režimu „body“ jde body jen přidávat"
+    );
   }
   return skupina;
 }
@@ -167,25 +210,26 @@ const cisloZeJmena = (jmeno) => {
 };
 
 // Identifikátor je buď celé jméno ("Petr (3)"), nebo jen pořadové číslo (3 / "3").
-// Vrací { kde, index } nebo null.
+// Vrací { kategorie, index } nebo null.
 function najdi(skupina, identifier) {
   const text = String(identifier).trim();
   const cislo = /^\d+$/.test(text) ? parseInt(text, 10) : cisloZeJmena(text);
 
-  for (const kde of ["mladsi", "starsi"]) {
-    const index = skupina[kde].findIndex(
+  for (const kategorie of skupina.kategorie) {
+    const index = kategorie.lezci.findIndex(
       (e) =>
         e.jmeno === text || (cislo !== null && cisloZeJmena(e.jmeno) === cislo)
     );
-    if (index >= 0) return { kde, index };
+    if (index >= 0) return { kategorie, index };
   }
   return null;
 }
 
-// První volné pořadové číslo v rámci téhle skupiny (mladší i starší dohromady).
+// První volné pořadové číslo v rámci celé skupiny (přes všechny kategorie).
 function dalsiCislo(skupina) {
   const pouzita = new Set(
-    [...skupina.mladsi, ...skupina.starsi]
+    skupina.kategorie
+      .flatMap((k) => k.lezci)
       .map((e) => cisloZeJmena(e.jmeno))
       .filter((n) => n !== null)
   );
@@ -194,11 +238,13 @@ function dalsiCislo(skupina) {
   return n;
 }
 
-function pridej(id, jmeno, kde, xp) {
-  const skupina = proZapis(id);
+function pridej(id, jmeno, kategorieId, xp) {
+  const skupina = proZapis(id, "admin");
+  const kategorie = skupina.kategorie.find((k) => k.id === kategorieId);
+  if (!kategorie) throw new Error("Kategorie neexistuje");
   const cislo = dalsiCislo(skupina);
-  skupina[kde] = [
-    ...skupina[kde],
+  kategorie.lezci = [
+    ...kategorie.lezci,
     { jmeno: `${String(jmeno).trim()} (${cislo})`, xp: Number(xp) || 0 },
   ];
   zapis(skupina);
@@ -206,10 +252,10 @@ function pridej(id, jmeno, kde, xp) {
 }
 
 function odeber(id, identifier) {
-  const skupina = proZapis(id);
+  const skupina = proZapis(id, "admin");
   const nalezen = najdi(skupina, identifier);
   if (!nalezen) return read();
-  skupina[nalezen.kde] = skupina[nalezen.kde].filter(
+  nalezen.kategorie.lezci = nalezen.kategorie.lezci.filter(
     (_, i) => i !== nalezen.index
   );
   zapis(skupina);
@@ -217,22 +263,55 @@ function odeber(id, identifier) {
 }
 
 function pridejXp(id, identifier, stena) {
-  const skupina = proZapis(id);
+  const body = Number(stena) || 0;
+  // odebrání bodů (mínus) je už „admin“ akce, přidání stačí režim „body“
+  const skupina = proZapis(id, body < 0 ? "admin" : "body");
   const nalezen = najdi(skupina, identifier);
   if (!nalezen) return read();
-  const lezec = skupina[nalezen.kde][nalezen.index];
-  skupina[nalezen.kde] = skupina[nalezen.kde].map((e, i) =>
-    i === nalezen.index ? { ...lezec, xp: lezec.xp + (Number(stena) || 0) } : e
+  nalezen.kategorie.lezci = nalezen.kategorie.lezci.map((e, i) =>
+    i === nalezen.index ? { ...e, xp: e.xp + body } : e
   );
   zapis(skupina);
   return read();
 }
 
-// Zámek přepíná jen správce (server.js si vyžádá heslo), proto se tady
-// nekontroluje, jestli je skupina odemčená.
-function nastavZamek(id, odemceno) {
-  const skupina = proZapis(id, { musiBytOdemcena: false });
-  skupina.odemceno = odemceno === true;
+// Kategorie zakládá kdokoli v režimu „admin“ (heslo netřeba).
+function pridejKategorii(id, nazev) {
+  const skupina = proZapis(id, "admin");
+  const cisty = String(nazev || "").trim().slice(0, 40);
+  if (!cisty) throw new Error("Chybí název kategorie");
+  if (skupina.kategorie.length >= MAX_KATEGORII)
+    throw new Error("Víc kategorií už ne");
+
+  const existujici = new Set(skupina.kategorie.map((k) => k.id));
+  const zaklad = naId(cisty);
+  let kid = zaklad;
+  let n = 2;
+  while (existujici.has(kid)) kid = zaklad.slice(0, 37) + "-" + n++;
+
+  skupina.kategorie = [...skupina.kategorie, { id: kid, nazev: cisty, lezci: [] }];
+  zapis(skupina);
+  return read();
+}
+
+// Smazat jde jen prázdnou kategorii — lezce i s body nikdo omylem nezahodí.
+function smazKategorii(id, kategorieId) {
+  const skupina = proZapis(id, "admin");
+  const kategorie = skupina.kategorie.find((k) => k.id === kategorieId);
+  if (!kategorie) throw new Error("Kategorie neexistuje");
+  if (kategorie.lezci.length)
+    throw new Error("Kategorie není prázdná, nejdřív odeber lezce");
+  skupina.kategorie = skupina.kategorie.filter((k) => k.id !== kategorieId);
+  zapis(skupina);
+  return read();
+}
+
+// Režim přepíná jen správce (server.js si vyžádá heslo), proto se tady
+// zámek nekontroluje.
+function nastavRezim(id, rezim) {
+  if (!REZIMY.includes(rezim)) throw new Error("Neznámý režim");
+  const skupina = proZapis(id, null);
+  skupina.rezim = rezim;
   zapis(skupina);
   return read();
 }
@@ -269,10 +348,10 @@ function smazSkupinu(id) {
 }
 
 // Jednorázový import (např. dat vytažených ze starého localStorage).
+// Bere nový tvar { kategorie: [...] } i starý { mladsi, starsi }.
 function nahrad(id, nova) {
-  const skupina = proZapis(id, { musiBytOdemcena: false });
-  skupina.mladsi = ocistiLezce(nova?.mladsi);
-  skupina.starsi = ocistiLezce(nova?.starsi);
+  const skupina = proZapis(id, null);
+  skupina.kategorie = ocistiKategorie(nova);
   zapis(skupina);
   return read();
 }
@@ -283,10 +362,13 @@ module.exports = {
   pridej,
   odeber,
   pridejXp,
-  nastavZamek,
+  pridejKategorii,
+  smazKategorii,
+  nastavRezim,
   vytvorSkupinu,
   smazSkupinu,
   nahrad,
+  REZIMY,
   DATA_DIR,
   SKUPINY_DIR,
 };

@@ -1,10 +1,12 @@
 // Komunikace se serverem žebříčku (server/server.js).
 // Data i heslo drží server doma na PC, klient jen posílá požadavky.
 //
-// Dvě úrovně oprávnění:
-//  - změny bodů a členů smí kdokoli, ale jen u skupiny, která je odemčená
-//    (příznak drží server u dat, takže přežije i restart)
-//  - odemykání/zamykání a zakládání skupin je za heslem (token z /api/login)
+// Oprávnění řídí režim skupiny (nastavuje ho správce heslem):
+//  - zamceno: jen prohlížení
+//  - body:    kdokoli smí lezcům body přidávat (ne odebírat)
+//  - admin:   kdokoli smí přidávat i odebírat body, přidávat/odebírat lezce
+//             a zakládat kategorie
+//  - přepínání režimu a zakládání/mazání skupin je za heslem (token z /api/login)
 
 // Server doma je z internetu dostupný na trvalé adrese přes Tailscale Funnel
 // (na PC zapnuto příkazem `tailscale funnel`). Adresa se nemění, takže ji verze
@@ -65,7 +67,7 @@ export async function prihlas(password) {
   return token;
 }
 
-// --- změny dat: jen u odemčené skupiny, heslo netřeba ---
+// --- změny žebříčku: podle režimu skupiny, heslo netřeba ---
 
 export const pridejLezce = (id, jmeno, kategorie, xp) =>
   zavolej("/api/add", { method: "POST", body: { id, jmeno, kategorie, xp } });
@@ -76,10 +78,16 @@ export const odeberLezce = (id, identifier) =>
 export const pripisXp = (id, identifier, stena) =>
   zavolej("/api/xp", { method: "POST", body: { id, identifier, stena } });
 
+export const pridejKategorii = (id, nazev) =>
+  zavolej("/api/kategorie", { method: "POST", body: { id, nazev } });
+
+export const smazKategorii = (id, kategorie) =>
+  zavolej("/api/kategorie/smaz", { method: "POST", body: { id, kategorie } });
+
 // --- správcovské akce: potřebují heslo ---
 
-export const nastavZamek = (id, odemceno) =>
-  zavolej("/api/zamek", { method: "POST", body: { id, odemceno } });
+export const nastavRezim = (id, rezim) =>
+  zavolej("/api/zamek", { method: "POST", body: { id, rezim } });
 
 export const pridejSkupinu = (nazev) =>
   zavolej("/api/skupina", { method: "POST", body: { nazev } });

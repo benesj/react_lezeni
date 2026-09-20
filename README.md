@@ -61,31 +61,50 @@ Přihlášení platí 12 hodin nebo do restartu serveru.
 ## Skupiny a zámek
 
 Kroužek může mít víc skupin (např. víc part v týdnu). Každá je samostatný
-žebříček s dělením na mladší a starší a **s vlastním zámkem**. V aplikaci se
-mezi nimi přepíná záložkami nahoře, u každé svítí 🔓 nebo 🔒.
+žebříček **s vlastním režimem zámku** a vlastními **kategoriemi** (třeba
+„Mladší“, „Starší“, „Pokročilí“ — každá kategorie má svůj žebříček). V aplikaci
+se mezi skupinami přepíná záložkami nahoře, u každé svítí ikona režimu.
 
-Zámek je navržený na tenhle běh tréninku:
+Režim má tři stupně a přepíná ho jen správce heslem:
 
-| kdy | kdo | co udělá |
-| --- | --- | --- |
-| začátek tréninku | správce (heslo) | *odemkne* svou skupinu |
-| během tréninku | děti, bez hesla | zapisují si body |
-| konec tréninku | správce (heslo) | *zamkne* |
-| doma | kdokoli | žebříček **jen vidí**, změnit nejde |
+| režim | ikona | kdo | co jde |
+| --- | --- | --- | --- |
+| zamčeno | 🔒 | kdokoli | jen prohlížet |
+| body | 🧗 | kdokoli s odkazem | lezcům body **jen přidávat** (kdo + kolik + vypočítej) |
+| admin | 🔓 | kdokoli s odkazem | body přidávat i **odebírat**, přidávat/odebírat členy, zakládat a mazat prázdné kategorie |
 
-- Zápisy (`/api/add`, `/api/remove`, `/api/xp`) heslo nechtějí — stačí, že je
-  skupina odemčená. U zamčené je server odmítne („Skupina je zamčená"), takže to
-  neobejde ani ten, kdo by šel na API mimo aplikaci.
-- Heslo je potřeba na **zámek a strukturu**: odemknout/zamknout, zakládat a mazat
-  skupiny, importovat data. Odemčení tedy dovoluje měnit body, ne přestavovat
-  žebříček.
-- Příznak zámku se ukládá k datům, takže **přežije restart serveru** — co se
-  zamklo, zůstane zamčené.
-- Nová skupina vzniká **zamčená**.
+Typický trénink: správce přepne svou skupinu na **body**, děti si ze svých
+mobilů zapisují body, na konci správce zamkne. Režim **admin** je na opravy
+a zakládání členů, protože je otevřený komukoli s odkazem.
+
+- Zápisy (`/api/xp`, `/api/add`, `/api/remove`, `/api/kategorie`) heslo
+  nechtějí — rozhoduje režim skupiny. Kontroluje ho server (`store.js`), takže
+  to neobejde ani ten, kdo by šel na API mimo aplikaci: v režimu „body“ odmítne
+  záporné body („V režimu „body“ jde body jen přidávat“), zamčená odmítne vše.
+- Heslo je potřeba na **režim a skupiny**: přepnout režim, zakládat a mazat
+  skupiny, importovat data.
+- Režim se ukládá k datům, takže **přežije restart serveru**.
+- Nová skupina vzniká **zamčená a bez kategorií** — kategorie se přidají
+  v režimu admin. Smazat jde jen prázdnou kategorii.
 - Zamčenou skupinu aplikace ani nenabízí k editaci — formulář je skrytý a místo
   něj je „Zamčeno, jde jen prohlížet".
 - Smazaná skupina se nezahodí: soubor se odloží do `smazane/` s datem. Poslední
   skupinu smazat nejde.
+
+### Efekty
+
+Zvuky se skládají ve Web Audio API (žádné soubory), fáborky dělá
+`canvas-confetti`, medaile a brambora jsou SVG v `src/Medaile.jsx`.
+
+| co se stalo | efekt |
+| --- | --- |
+| body přibyly | sprška fáborků + veselý akord |
+| body ubyly (admin) | červený záblesk přes celou obrazovku + „au“ jako v Minecraftu |
+| lezec někoho přeskočil v žebříčku | fanfára, fáborky z obou stran, hvězdy a velká hláška se jmény přeskočených |
+| 1.–3. místo | zlatá, stříbrná, bronzová medaile |
+| 4. místo | brambora |
+
+Přeskočení se pozná porovnáním pořadí v kategorii před zápisem a po něm.
 
 ## Data
 
@@ -98,10 +117,16 @@ C:\Users\<jméno>\AppData\Roaming\lezecky-zebricek\  <- vývoj (npm run server)
 ```
 
 Každá skupina je vlastní soubor `skupiny/<id>.json` (id se udělá z názvu,
-např. „Pondělní parta" → `pondelni-parta.json`). Uvnitř je název, příznak
-`odemceno`, datum vzniku a seznamy `mladsi` / `starsi`. Starší jediný
-`data.json` se při prvním startu sám převede na skupinu `hlavni` a odloží
-jako `data.json.prevedeno`.
+např. „Pondělní parta" → `pondelni-parta.json`). Uvnitř je název, `rezim`
+(`zamceno` / `body` / `admin`), datum vzniku a pole `kategorie`, kde každá má
+`id`, `nazev` a seznam `lezci` (`jmeno`, `xp`). Starší jediný `data.json` se
+při prvním startu sám převede na skupinu `hlavni` a odloží jako
+`data.json.prevedeno`.
+
+Soubory z dřívější verze (boolean `odemceno`, pevné seznamy `mladsi` /
+`starsi`) server přečte a při prvním zápisu převede: `odemceno: true` → režim
+`admin`, neprázdné seznamy → kategorie „Mladší“ / „Starší“ (prázdné se
+zahodí, výchozí kategorie už nejsou). Předchozí verze zůstane v `<id>.bak.json`.
 
 Provozní data leží mimo profil, protože účet služby (`LOCAL SERVICE`) do
 uživatelského profilu nevidí. Cestu určuje proměnná `DATA_DIR`, kterou nastavuje
@@ -118,7 +143,7 @@ uživatelského profilu nevidí. Cestu určuje proměnná `DATA_DIR`, kterou nas
 
 **Přenos starých dat z prohlížeče:** v prohlížeči, kde žebříček dosud byl,
 otevřít konzoli (F12) a spustit `copy(localStorage.getItem('urlData'))`.
-Obsah schránky vložit do `mladsi`/`starsi` v souboru té skupiny (cesta výše)
+Obsah schránky vložit do `lezci` příslušné kategorie v souboru té skupiny (cesta výše)
 a restartovat server.
 
 ## Vývoj

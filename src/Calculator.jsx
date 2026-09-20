@@ -1,4 +1,4 @@
-import React, { useContext, useState } from "react";
+import React, { useContext, useEffect, useRef, useState } from "react";
 import { AppContext } from "./AppProvider";
 import {
   getToken,
@@ -7,16 +7,36 @@ import {
   pridejLezce,
   odeberLezce,
   pripisXp,
-  nastavZamek,
+  pridejKategorii,
+  smazKategorii,
+  nastavRezim,
   pridejSkupinu,
   smazSkupinu,
 } from "./api";
+import {
+  zvukBody,
+  zvukUbrano,
+  zvukPreskoceni,
+  konfetyBody,
+  konfetyPreskoceni,
+} from "./efekty";
+import { Umisteni } from "./Medaile";
 import "./App.css";
 
+// Režimy zámku skupiny — stejné hodnoty drží server.
+const REZIMY = [
+  { id: "zamceno", ikona: "🔒", nazev: "zamčeno", popis: "jen prohlížení" },
+  { id: "body", ikona: "🧗", nazev: "body", popis: "body jde jen přidávat" },
+  { id: "admin", ikona: "🔓", nazev: "admin", popis: "vše: body ±, členové, kategorie" },
+];
+const rezimInfo = (id) => REZIMY.find((r) => r.id === id) || REZIMY[0];
+
 // ✅ Pomocné validace
-// Celé číslo, klidně záporné — mínusem se dají body i odebrat.
-function isNumberOk(number) {
-  return /^-?\d+$/.test(String(number ?? "").trim());
+// Celé číslo, klidně záporné — mínusem se dají body i odebrat (jen v admin).
+function isNumberOk(number, { jenPlus = false } = {}) {
+  const text = String(number ?? "").trim();
+  if (jenPlus) return /^\d+$/.test(text) && Number(text) > 0;
+  return /^-?\d+$/.test(text);
 }
 
 // Telefonní klávesnice mínus nenabízí, proto tlačítko ±.
@@ -26,41 +46,63 @@ function prehodZnamenko(hodnota) {
   return text ? "-" + text : "-";
 }
 
-// Sedí zadaný text na některého lezce ve vybrané skupině?
-// Bere celé jméno i samotné pořadové číslo.
-function isTextOk(text, skupina) {
-  const num = parseInt(text, 10);
+const cisloZeJmena = (jmeno) => {
+  const match = String(jmeno).match(/\((\d+)\)$/);
+  return match ? parseInt(match[1], 10) : null;
+};
 
-  const checkArray = (arr) =>
-    arr?.some((e) => {
-      // 1️⃣ kontrola celé shody jména
-      if (e.jmeno === text) return true;
-
-      // 2️⃣ kontrola podle čísla v závorce
-      const match = e.jmeno.match(/\((\d+)\)$/);
-      return match && !isNaN(num) && parseInt(match[1], 10) === num;
-    });
-
-  return checkArray(skupina?.mladsi) || checkArray(skupina?.starsi);
+// Najde lezce ve skupině podle celého jména nebo pořadového čísla.
+// Vrací { kategorie, lezec } nebo null.
+function najdiLezce(skupina, text) {
+  const hledany = String(text ?? "").trim();
+  const cislo = /^\d+$/.test(hledany)
+    ? parseInt(hledany, 10)
+    : cisloZeJmena(hledany);
+  for (const kategorie of skupina?.kategorie || []) {
+    const lezec = kategorie.lezci.find(
+      (e) =>
+        e.jmeno === hledany ||
+        (cislo !== null && cisloZeJmena(e.jmeno) === cislo)
+    );
+    if (lezec) return { kategorie, lezec };
+  }
+  return null;
 }
 
-function isKategorieOk(kategorie) {
-  return kategorie === "mladsi" || kategorie === "starsi";
+const isTextOk = (text, skupina) => !!najdiLezce(skupina, text);
+
+const serad = (lezci) => [...lezci].sort((a, b) => b.xp - a.xp);
+
+// Pořadí lezce v jeho kategorii (0 = první) a jména těch nad ním.
+function umisteni(skupina, jmeno) {
+  const nalezen = najdiLezce(skupina, jmeno);
+  if (!nalezen) return null;
+  const serazeni = serad(nalezen.kategorie.lezci);
+  const index = serazeni.findIndex((e) => e.jmeno === nalezen.lezec.jmeno);
+  return { index, serazeni };
 }
 
-// ✅ Komponenta pro formulář
-const TextInputExample = ({
+// ✅ Formulář pro zápis. V režimu „body“ jen kdo + kolik + vypočítej,
+// v režimu „admin“ navíc kategorie, ±, členové a zakládání kategorií.
+const Formular = ({
+  rezim,
   text,
   onChangeText,
   number,
   onChangeNumber,
   kategorie,
   onChangeKategorie,
+  novaKategorie,
+  onChangeNovaKategorie,
   add,
   remove,
   vypocet,
+  pridatKategorii,
 }) => {
   const { skupina } = useContext(AppContext);
+  const admin = rezim === "admin";
+  const kategorieOk = skupina?.kategorie.some((k) => k.id === kategorie);
+  const cisloOk = isNumberOk(number, { jenPlus: !admin });
 
   return (
     <div>
@@ -68,60 +110,93 @@ const TextInputExample = ({
         className={`input ${isTextOk(text, skupina) ? "ok" : "not-ok"}`}
         value={text}
         onChange={(e) => onChangeText(e.target.value)}
-        placeholder="jméno"
+        placeholder="jméno nebo číslo lezce"
       />
-      <input
-        className={`input ${isKategorieOk(kategorie) ? "ok" : "not-ok"}`}
-        value={kategorie}
-        onChange={(e) => onChangeKategorie(e.target.value)}
-        placeholder="mladsi / starsi"
-      />
+
+      {admin && (
+        <select
+          className={`input ${kategorieOk ? "ok" : "not-ok"}`}
+          value={kategorieOk ? kategorie : ""}
+          onChange={(e) => onChangeKategorie(e.target.value)}
+        >
+          <option value="">kategorie pro nového člena…</option>
+          {skupina.kategorie.map((k) => (
+            <option key={k.id} value={k.id}>
+              {k.nazev}
+            </option>
+          ))}
+        </select>
+      )}
+
       <div className="input-radek">
         <input
-          className={`input ${isNumberOk(number) ? "ok" : "not-ok"}`}
+          className={`input ${cisloOk ? "ok" : "not-ok"}`}
           value={number ?? ""}
           // text + inputMode: na mobilu vyskočí číselná klávesnice,
           // ale na rozdíl od type="number" jde napsat i mínus
           onChange={(e) =>
-            /^-?\d*$/.test(e.target.value) && onChangeNumber(e.target.value)
+            (admin ? /^-?\d*$/ : /^\d*$/).test(e.target.value) &&
+            onChangeNumber(e.target.value)
           }
-          placeholder="lvl překážky"
+          placeholder={admin ? "body (mínus = odebrat)" : "kolik bodů"}
           type="text"
           inputMode="numeric"
         />
-        <button
-          className="btn"
-          title="přepnout plus/mínus"
-          onClick={() => onChangeNumber(prehodZnamenko(number))}
-        >
-          ±
-        </button>
+        {admin && (
+          <button
+            className="btn"
+            title="přepnout plus/mínus"
+            onClick={() => onChangeNumber(prehodZnamenko(number))}
+          >
+            ±
+          </button>
+        )}
       </div>
 
       <button
-        className="btn green"
-        onClick={() =>
-          !isTextOk(text, skupina) &&
-          isKategorieOk(kategorie) &&
-          add(text, kategorie, number)
-        }
-      >
-        nový člen
-      </button>
-      <button
-        className="btn red"
-        onClick={() => isTextOk(text, skupina) && remove(text)}
-      >
-        odeber člena
-      </button>
-      <button
         className="btn hlavni"
         onClick={() =>
-          isTextOk(text, skupina) && isNumberOk(number) && vypocet(text, number)
+          isTextOk(text, skupina) && cisloOk && vypocet(text, number)
         }
       >
         vypočítej
       </button>
+
+      {admin && (
+        <div className="admin-blok">
+          <p className="section-title">Členové</p>
+          <button
+            className="btn green"
+            onClick={() =>
+              !isTextOk(text, skupina) &&
+              kategorieOk &&
+              add(text, kategorie, isNumberOk(number) ? number : 0)
+            }
+          >
+            nový člen
+          </button>
+          <button
+            className="btn red"
+            onClick={() => isTextOk(text, skupina) && remove(text)}
+          >
+            odeber člena
+          </button>
+
+          <p className="section-title">Kategorie</p>
+          <div className="input-radek">
+            <input
+              className="input"
+              value={novaKategorie}
+              onChange={(e) => onChangeNovaKategorie(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && pridatKategorii()}
+              placeholder="název nové kategorie"
+            />
+            <button className="btn green" onClick={pridatKategorii}>
+              přidej kategorii
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -159,7 +234,7 @@ const LoginForm = ({ password, onChangePassword, setSpravce, setChybaAkce }) => 
   );
 };
 
-// ✅ Přepínač lezeckých skupin. Každá má vlastní žebříček i vlastní zámek.
+// ✅ Přepínač lezeckých skupin. Každá má vlastní žebříček i vlastní režim.
 const PrepinacSkupin = ({ skupiny, vybrana, setVybrana }) => {
   if (skupiny.length < 2) return null;
 
@@ -171,19 +246,16 @@ const PrepinacSkupin = ({ skupiny, vybrana, setVybrana }) => {
           className={`tab ${s.id === vybrana ? "aktivni" : ""}`}
           onClick={() => setVybrana(s.id)}
         >
-          {s.nazev} {s.odemceno ? "🔓" : "🔒"}
+          {s.nazev} {rezimInfo(s.rezim).ikona}
         </button>
       ))}
     </div>
   );
 };
 
-// ✅ Panel správce — zámek a zakládání/mazání skupin. Jen za heslem.
+// ✅ Panel správce — režim zámku a zakládání/mazání skupin. Jen za heslem.
 const PanelSpravce = ({ skupina, provedAkci, odhlas, setVybrana }) => {
   const [novaSkupina, setNovaSkupina] = useState("");
-
-  const prepniZamek = () =>
-    provedAkci(() => nastavZamek(skupina.id, !skupina.odemceno));
 
   const zaloz = () => {
     if (!novaSkupina.trim()) return;
@@ -204,16 +276,23 @@ const PanelSpravce = ({ skupina, provedAkci, odhlas, setVybrana }) => {
 
   return (
     <div className="spravce">
-      <p className="section-title">Správce</p>
-
-      <button
-        className={`btn ${skupina.odemceno ? "red" : "green"}`}
-        onClick={prepniZamek}
-      >
-        {skupina.odemceno
-          ? `zamkni „${skupina.nazev}“`
-          : `odemkni „${skupina.nazev}“`}
-      </button>
+      <p className="section-title">Správce — režim skupiny „{skupina.nazev}“</p>
+      <div className="rezimy">
+        {REZIMY.map((r) => (
+          <button
+            key={r.id}
+            className={`tab ${skupina.rezim === r.id ? "aktivni" : ""}`}
+            title={r.popis}
+            onClick={() =>
+              skupina.rezim !== r.id &&
+              provedAkci(() => nastavRezim(skupina.id, r.id))
+            }
+          >
+            {r.ikona} {r.nazev}
+          </button>
+        ))}
+      </div>
+      <p className="popis-rezimu">{rezimInfo(skupina.rezim).popis}</p>
 
       <div className="input-radek">
         <input
@@ -238,13 +317,22 @@ const PanelSpravce = ({ skupina, provedAkci, odhlas, setVybrana }) => {
   );
 };
 
-// ✅ Tabulka
-const Tabulka = ({ skupina, onChangeText, onChangeNumber }) => {
-  const serazeneMladsi = [...(skupina?.mladsi || [])].sort((a, b) => b.xp - a.xp);
-  const serazeneStarsi = [...(skupina?.starsi || [])].sort((a, b) => b.xp - a.xp);
+// ✅ Tabulka — každá kategorie má vlastní žebříček s medailemi a bramborou.
+const Tabulka = ({ skupina, onChangeText, onChangeNumber, smazatKategorii }) => {
+  if (!skupina) return null;
+  if (!skupina.kategorie.length) {
+    return (
+      <p className="popis-rezimu">
+        Zatím žádná kategorie. Přidá se v režimu „admin“.
+      </p>
+    );
+  }
 
   const radek = (item, index) => (
-    <div key={item.jmeno}>
+    <div key={item.jmeno} className="radek-lezce">
+      <span className="umisteni">
+        <Umisteni index={index} />
+      </span>
       <span
         onClick={() => {
           onChangeText(item.jmeno);
@@ -252,21 +340,29 @@ const Tabulka = ({ skupina, onChangeText, onChangeNumber }) => {
         }}
         className="bold-text"
       >
-        {item.jmeno} xp: {item.xp}{" "}
-        {index === 0 && <span className="gold">☻</span>}
-        {index === 1 && <span className="silver">☻</span>}
-        {index === 2 && <span className="bronze">☻</span>}
+        {item.jmeno} xp: {item.xp}
       </span>
     </div>
   );
 
   return (
     <div>
-      <p className="section-title red">Mladší:</p>
-      {serazeneMladsi.map(radek)}
-
-      <p className="section-title red">Starší:</p>
-      {serazeneStarsi.map(radek)}
+      {skupina.kategorie.map((k) => (
+        <div key={k.id} className="kategorie">
+          <p className="section-title red">
+            {k.nazev}:
+            {smazatKategorii && !k.lezci.length && (
+              <button
+                className="btn odkaz maly"
+                onClick={() => smazatKategorii(k.id)}
+              >
+                smaž prázdnou kategorii
+              </button>
+            )}
+          </p>
+          {serad(k.lezci).map(radek)}
+        </div>
+      ))}
     </div>
   );
 };
@@ -281,18 +377,29 @@ function Calculator() {
   const [password, onChangePassword] = useState("");
   const [chybaAkce, setChybaAkce] = useState(null);
 
-  const [text, onChangeText] = useState("Jmeno");
-  const [kategorie, onChangeKategorie] = useState("kategorie");
+  const [text, onChangeText] = useState("");
+  const [kategorie, onChangeKategorie] = useState("");
   const [number, onChangeNumber] = useState(null);
+  const [novaKategorie, onChangeNovaKategorie] = useState("");
+
+  // efekty: červený záblesk při ubrání bodů, hláška při přeskočení
+  const [blesk, setBlesk] = useState(false);
+  const [preskoceni, setPreskoceni] = useState(null);
+  const casovace = useRef([]);
+  useEffect(() => () => casovace.current.forEach(clearTimeout), []);
+  const zaChvili = (fn, ms) => casovace.current.push(setTimeout(fn, ms));
 
   // Každá změna jde na server a ten vrátí celý aktuální stav.
   const provedAkci = async (akce) => {
     try {
-      setData(await akce());
+      const novy = await akce();
+      setData(novy);
       setChybaAkce(null);
+      return novy;
     } catch (e) {
       setChybaAkce(e.message);
       if (!getToken()) setSpravce(false); // token vypršel -> znovu heslo
+      return null;
     }
   };
 
@@ -301,8 +408,53 @@ function Calculator() {
 
   const remove = (who) => provedAkci(() => odeberLezce(skupina.id, who));
 
-  const vypocet = (who, stena) =>
-    provedAkci(() => pripisXp(skupina.id, who, stena));
+  const pridatKategorii = () => {
+    if (!novaKategorie.trim()) return;
+    provedAkci(async () => {
+      const stav = await pridejKategorii(skupina.id, novaKategorie);
+      onChangeNovaKategorie("");
+      return stav;
+    });
+  };
+
+  const smazatKategorii = (kid) =>
+    provedAkci(() => smazKategorii(skupina.id, kid));
+
+  // Zápis bodů + efekty podle toho, co se stalo.
+  const vypocet = async (who, stena) => {
+    const body = Number(stena) || 0;
+    const pred = umisteni(skupina, who);
+    const novy = await provedAkci(() => pripisXp(skupina.id, who, stena));
+    if (!novy) return;
+
+    if (body < 0) {
+      zvukUbrano();
+      setBlesk(true);
+      zaChvili(() => setBlesk(false), 600);
+      return;
+    }
+    if (body === 0) return;
+
+    const skupinaPo = novy.skupiny.find((s) => s.id === skupina.id);
+    const po = umisteni(skupinaPo, who);
+    if (pred && po && po.index < pred.index) {
+      // Přeskočil někoho — ti, kdo byli nad ním a teď jsou pod ním.
+      const preskoceni = pred.serazeni
+        .slice(po.index, pred.index)
+        .map((e) => e.jmeno);
+      zvukPreskoceni();
+      konfetyPreskoceni();
+      setPreskoceni({
+        kdo: po.serazeni[po.index].jmeno,
+        misto: po.index + 1,
+        koho: preskoceni,
+      });
+      zaChvili(() => setPreskoceni(null), 3200);
+    } else {
+      zvukBody();
+      konfetyBody();
+    }
+  };
 
   const odhlas = () => {
     logout();
@@ -310,8 +462,21 @@ function Calculator() {
     setChceHeslo(false);
   };
 
+  const rezim = skupina?.rezim || "zamceno";
+  const info = rezimInfo(rezim);
+
   return (
     <>
+      {blesk && <div className="blesk" />}
+      {preskoceni && (
+        <div className="preskoceni">
+          <div className="preskoceni-kdo">{preskoceni.kdo}</div>
+          <div className="preskoceni-text">
+            {preskoceni.misto}. místo! Přeskočil(a) {preskoceni.koho.join(", ")}
+          </div>
+        </div>
+      )}
+
       <PrepinacSkupin
         skupiny={skupiny}
         vybrana={vybrana}
@@ -320,22 +485,26 @@ function Calculator() {
 
       {skupina && (
         <p className="section-title">
-          {skupina.nazev} {skupina.odemceno ? "🔓 odemčeno" : "🔒 zamčeno"}
+          {skupina.nazev} {info.ikona} {info.nazev}
         </p>
       )}
 
       {/* Formulář se ukáže jen u odemčené skupiny — zamčenou nezmění nikdo. */}
-      {skupina?.odemceno ? (
-        <TextInputExample
+      {skupina && rezim !== "zamceno" ? (
+        <Formular
+          rezim={rezim}
           text={text}
           onChangeText={onChangeText}
           number={number}
           onChangeNumber={onChangeNumber}
           kategorie={kategorie}
           onChangeKategorie={onChangeKategorie}
+          novaKategorie={novaKategorie}
+          onChangeNovaKategorie={onChangeNovaKategorie}
           add={add}
           remove={remove}
           vypocet={vypocet}
+          pridatKategorii={pridatKategorii}
         />
       ) : (
         <p>Zamčeno, jde jen prohlížet. Odemkne správce heslem.</p>
@@ -369,6 +538,7 @@ function Calculator() {
         onChangeText={onChangeText}
         onChangeNumber={onChangeNumber}
         skupina={skupina}
+        smazatKategorii={rezim === "admin" ? smazatKategorii : null}
       />
     </>
   );
