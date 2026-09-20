@@ -65,31 +65,48 @@ Kroužek může mít víc skupin (např. víc part v týdnu). Každá je samosta
 „Mladší“, „Starší“, „Pokročilí“ — každá kategorie má svůj žebříček). V aplikaci
 se mezi skupinami přepíná záložkami nahoře, u každé svítí ikona režimu.
 
-Režim má tři stupně a přepíná ho jen správce heslem:
+Režim platí pro všechny, kdo mají odkaz, a přepíná ho jen správce heslem:
 
-| režim | ikona | kdo | co jde |
-| --- | --- | --- | --- |
-| zamčeno | 🔒 | kdokoli | jen prohlížet |
-| body | 🧗 | kdokoli s odkazem | lezcům body **jen přidávat** (kdo + kolik + vypočítej) |
-| admin | 🔓 | kdokoli s odkazem | body přidávat i **odebírat**, přidávat/odebírat členy, zakládat a mazat prázdné kategorie |
+| režim | ikona | děti (bez hesla) |
+| --- | --- | --- |
+| zamčeno | 🔒 | jen prohlížejí |
+| body | 🧗 | lezcům body **jen přidávají** (kdo + kolik + vypočítej) |
 
-Typický trénink: správce přepne svou skupinu na **body**, děti si ze svých
-mobilů zapisují body, na konci správce zamkne. Režim **admin** je na opravy
-a zakládání členů, protože je otevřený komukoli s odkazem.
+**Správce** se přihlásí heslem a smí všechno bez ohledu na režim: body
+přidávat i **odebírat**, přidávat/odebírat členy, zakládat a mazat prázdné
+kategorie, přepínat režim, zakládat a mazat skupiny, importovat data.
+Přihlášení platí **jen na tom zařízení**, kde heslo zadal (token je jen v tom
+prohlížeči), takže děti na svých mobilech správcovské věci nevidí ani nepošlou,
+i když je skupina otevřená pro body.
 
-- Zápisy (`/api/xp`, `/api/add`, `/api/remove`, `/api/kategorie`) heslo
-  nechtějí — rozhoduje režim skupiny. Kontroluje ho server (`store.js`), takže
-  to neobejde ani ten, kdo by šel na API mimo aplikaci: v režimu „body“ odmítne
-  záporné body („V režimu „body“ jde body jen přidávat“), zamčená odmítne vše.
-- Heslo je potřeba na **režim a skupiny**: přepnout režim, zakládat a mazat
-  skupiny, importovat data.
+Typický trénink: správce si na svém mobilu přihlásí správce, založí kategorie
+a členy, přepne skupinu na **body**, děti si ze svých mobilů zapisují body,
+na konci správce zamkne.
+
+- Bez hesla jde jediná akce: `/api/xp` s kladným číslem u skupiny v režimu
+  „body“. Server (`server.js` + `store.js`) odmítne záporné body („Body může
+  odebrat jen správce“) a u zamčené skupiny vše („Skupina je zamčená“), takže
+  to neobejde ani ten, kdo by šel na API mimo aplikaci.
+- Všechny ostatní cesty (`/api/add`, `/api/remove`, `/api/kategorie`,
+  `/api/kategorie/smaz`, `/api/zamek`, `/api/skupina`, `/api/skupina/smaz`,
+  `/api/import`) chtějí token z `/api/login`, jinak vrátí 401 „Jen správce“.
 - Režim se ukládá k datům, takže **přežije restart serveru**.
-- Nová skupina vzniká **zamčená a bez kategorií** — kategorie se přidají
-  v režimu admin. Smazat jde jen prázdnou kategorii.
+- Nová skupina vzniká **zamčená a bez kategorií** — kategorie přidá správce.
+  Smazat jde jen prázdnou kategorii.
+- Dřívější režim „admin“ (kdokoli s odkazem mohl měnit členy) je zrušený;
+  soubory, které ho mají, se převedou na „body“.
 - Zamčenou skupinu aplikace ani nenabízí k editaci — formulář je skrytý a místo
   něj je „Zamčeno, jde jen prohlížet".
 - Smazaná skupina se nezahodí: soubor se odloží do `smazane/` s datem. Poslední
   skupinu smazat nejde.
+
+### Odznaky (achievementy)
+
+Správce může každému lezci zaškrtnout odznaky; ostatní je vidí jako malé
+obrázky nad jménem. Seznam je napevno: smotané lano, dvojitá osma, expreska,
+jistítko „kyblík“, žíněnka. Nový odznak = přidat id do `ODZNAKY`
+v `server/store.js` a obrázek + název do `src/Odznaky.jsx`. Ukládá se jako
+pole `odznaky` u lezce, mění ho jen `/api/odznak` (za heslem).
 
 ### Efekty
 
@@ -99,7 +116,7 @@ Zvuky se skládají ve Web Audio API (žádné soubory), fáborky dělá
 | co se stalo | efekt |
 | --- | --- |
 | body přibyly | sprška fáborků + veselý akord |
-| body ubyly (admin) | červený záblesk přes celou obrazovku + „au“ jako v Minecraftu |
+| body ubyly (správce) | červený záblesk přes celou obrazovku + „au“ jako v Minecraftu |
 | lezec někoho přeskočil v žebříčku | fanfára, fáborky z obou stran, hvězdy a velká hláška se jmény přeskočených |
 | 1.–3. místo | zlatá, stříbrná, bronzová medaile |
 | 4. místo | brambora |
@@ -118,14 +135,14 @@ C:\Users\<jméno>\AppData\Roaming\lezecky-zebricek\  <- vývoj (npm run server)
 
 Každá skupina je vlastní soubor `skupiny/<id>.json` (id se udělá z názvu,
 např. „Pondělní parta" → `pondelni-parta.json`). Uvnitř je název, `rezim`
-(`zamceno` / `body` / `admin`), datum vzniku a pole `kategorie`, kde každá má
+(`zamceno` / `body`), datum vzniku a pole `kategorie`, kde každá má
 `id`, `nazev` a seznam `lezci` (`jmeno`, `xp`). Starší jediný `data.json` se
 při prvním startu sám převede na skupinu `hlavni` a odloží jako
 `data.json.prevedeno`.
 
 Soubory z dřívější verze (boolean `odemceno`, pevné seznamy `mladsi` /
-`starsi`) server přečte a při prvním zápisu převede: `odemceno: true` → režim
-`admin`, neprázdné seznamy → kategorie „Mladší“ / „Starší“ (prázdné se
+`starsi`) server přečte a při prvním zápisu převede: `odemceno: true` (i zrušený režim `admin`) → režim
+`body`, neprázdné seznamy → kategorie „Mladší“ / „Starší“ (prázdné se
 zahodí, výchozí kategorie už nejsou). Předchozí verze zůstane v `<id>.bak.json`.
 
 Provozní data leží mimo profil, protože účet služby (`LOCAL SERVICE`) do

@@ -243,3 +243,73 @@ select.input {
   from { background-position: 0% 50%; }
   to { background-position: 400% 50%; }
 }
+
+
+/* --- odznaky (achievementy) --- */
+
+.lezec {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+/* odznaky, které lezec má — malé, nad jménem */
+.odznaky {
+  display: flex;
+  gap: 3px;
+  margin: 4px 0 -2px;
+}
+
+.odznak {
+  width: 30px;
+  height: 30px;
+}
+.odznak.maly {
+  width: 22px;
+  height: 22px;
+}
+
+/* zaškrtávátka pro správce */
+.odznaky-volba {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 2px 0 8px;
+}
+
+.odznaky-volba label {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 12px;
+  color: #bbb;
+  cursor: pointer;
+}
+
+.odznaky-volba input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: #f57c00;
+}
+
+.odznak-nazev {
+  max-width: 70px;
+  line-height: 1.1;
+}
+
+/* řádek lezce nesmí přetékat přes okraj mobilu — zaškrtávátka se zalamují */
+.radek-lezce {
+  align-items: flex-start;
+}
+.radek-lezce .umisteni {
+  flex: none;
+  margin-top: 2px;
+}
+.lezec {
+  flex: 1;
+  min-width: 0;
+}
+.odznaky-volba {
+  max-width: 100%;
+}

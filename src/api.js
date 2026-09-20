@@ -4,8 +4,8 @@
 // Oprávnění řídí režim skupiny (nastavuje ho správce heslem):
 //  - zamceno: jen prohlížení
 //  - body:    kdokoli smí lezcům body přidávat (ne odebírat)
-//  - admin:   kdokoli smí přidávat i odebírat body, přidávat/odebírat lezce
-//             a zakládat kategorie
+//  - správce (heslo, token jen v tomhle prohlížeči): body i odebírat, členové,
+//    kategorie, režim, skupiny, import — bez ohledu na režim skupiny
 //  - přepínání režimu a zakládání/mazání skupin je za heslem (token z /api/login)
 
 // Server doma je z internetu dostupný na trvalé adrese přes Tailscale Funnel
@@ -85,6 +85,12 @@ export const smazKategorii = (id, kategorie) =>
   zavolej("/api/kategorie/smaz", { method: "POST", body: { id, kategorie } });
 
 // --- správcovské akce: potřebují heslo ---
+
+export const nastavOdznak = (id, identifier, odznak, ma) =>
+  zavolej("/api/odznak", {
+    method: "POST",
+    body: { id, identifier, odznak, ma },
+  });
 
 export const nastavRezim = (id, rezim) =>
   zavolej("/api/zamek", { method: "POST", body: { id, rezim } });

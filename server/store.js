@@ -6,12 +6,13 @@
 // „Pokročilí“…), každá kategorie má vlastní žebříček lezců. Nová skupina
 // vzniká bez kategorií — přidávají se až v aplikaci.
 //
-// Režim zámku (rezim) má tři stupně:
+// Režim zámku (rezim) má dva stupně a platí pro všechny s odkazem:
 //   zamceno – nikdo nic nemění, jde jen prohlížet
 //   body    – kdokoli smí lezcům body jen PŘIDÁVAT
-//   admin   – kdokoli smí přidávat i odebírat body, přidávat/odebírat lezce
-//             a zakládat kategorie (to, co dřív uměla „odemčená“ skupina)
-// Režim přepíná jen správce heslem (server.js).
+// Všechno ostatní (odebírání bodů, členové, kategorie, přepínání režimu)
+// smí jen správce přihlášený heslem — a to jen na svém zařízení, protože
+// token z přihlášení drží jen ten prohlížeč. Kdo je správce, rozhoduje
+// server.js, sem přijde jen příznak `spravce`.
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
@@ -33,9 +34,7 @@ const VYCHOZI_NAZEV = "Hlavní";
 const MAX_SKUPIN = 50;
 const MAX_KATEGORII = 20;
 
-const REZIMY = ["zamceno", "body", "admin"];
-// Pořadí důležitosti: co smí „body“, smí i „admin“.
-const UROVEN = { zamceno: 0, body: 1, admin: 2 };
+const REZIMY = ["zamceno", "body"];
 
 // id skupiny je zároveň jméno souboru, takže se povolují jen bezpečné znaky
 // (jinak by se dalo přes ../ psát mimo složku s daty).
@@ -66,10 +65,22 @@ const prazdnaSkupina = (nazev) => ({
   kategorie: [],
 });
 
+// Odznaky (achievementy), které správce zaškrtává u lezců. Seznam je
+// napevno tady i v aplikaci (src/Odznaky.jsx má k nim obrázky) — nový
+// odznak se přidá na obě místa.
+const ODZNAKY = ["lano", "osma", "expreska", "kyblik", "zinenka"];
+
+const ocistiOdznaky = (pole) =>
+  [...new Set((Array.isArray(pole) ? pole : []).filter((o) => ODZNAKY.includes(o)))];
+
 const ocistiLezce = (pole) =>
   (Array.isArray(pole) ? pole : [])
     .filter((e) => e && typeof e.jmeno === "string")
-    .map((e) => ({ jmeno: e.jmeno, xp: Number(e.xp) || 0 }));
+    .map((e) => ({
+      jmeno: e.jmeno,
+      xp: Number(e.xp) || 0,
+      odznaky: ocistiOdznaky(e.odznaky),
+    }));
 
 // Kategorie ze souboru — nebo převod ze starého tvaru s pevným
 // mladsi/starsi (převádí se jen ty, ve kterých někdo je, prázdné
@@ -93,10 +104,13 @@ function ocistiKategorie(parsed) {
   return stare.filter((k) => k.lezci.length > 0);
 }
 
-// Režim ze souboru; starý boolean `odemceno` se převede (true = admin).
+// Režim ze souboru. Starší tvary se převedou: boolean `odemceno` (true =
+// body) i zrušený režim „admin“ (ten dovoloval komukoli měnit členy —
+// teď je to jen na správci, skupina zůstane otevřená pro body).
 function ocistiRezim(parsed) {
   if (REZIMY.includes(parsed?.rezim)) return parsed.rezim;
-  return parsed?.odemceno === true ? "admin" : "zamceno";
+  if (parsed?.rezim === "admin" || parsed?.odemceno === true) return "body";
+  return "zamceno";
 }
 
 // Souboru na disku se nevěří — vždy se dosadí známý tvar.
@@ -189,17 +203,13 @@ function read() {
   return { skupiny };
 }
 
-// Skupina, se kterou se má pracovat. Hlídá i zámek: `potreba` říká, jaký
-// režim akce vyžaduje (null = bez kontroly, to si dovolí jen správce).
-function proZapis(id, potreba) {
+// Skupina, se kterou se má pracovat. Když akci nedělá správce, musí být
+// skupina v režimu „body“ — zamčenou nezmění nikdo jiný než správce.
+function proZapis(id, { spravce = false } = {}) {
   const skupina = ctiSkupinu(id);
   if (!skupina) throw new Error("Skupina neexistuje");
-  if (potreba && UROVEN[skupina.rezim] < UROVEN[potreba]) {
-    throw new Error(
-      skupina.rezim === "zamceno"
-        ? "Skupina je zamčená"
-        : "V režimu „body“ jde body jen přidávat"
-    );
+  if (!spravce && skupina.rezim === "zamceno") {
+    throw new Error("Skupina je zamčená");
   }
   return skupina;
 }
@@ -238,8 +248,10 @@ function dalsiCislo(skupina) {
   return n;
 }
 
+// Členy, kategorie a odebírání bodů si pustí jen správce — kdo je správce,
+// ověřuje server.js podle tokenu, sem už chodí jen správcovská volání.
 function pridej(id, jmeno, kategorieId, xp) {
-  const skupina = proZapis(id, "admin");
+  const skupina = proZapis(id, { spravce: true });
   const kategorie = skupina.kategorie.find((k) => k.id === kategorieId);
   if (!kategorie) throw new Error("Kategorie neexistuje");
   const cislo = dalsiCislo(skupina);
@@ -252,7 +264,7 @@ function pridej(id, jmeno, kategorieId, xp) {
 }
 
 function odeber(id, identifier) {
-  const skupina = proZapis(id, "admin");
+  const skupina = proZapis(id, { spravce: true });
   const nalezen = najdi(skupina, identifier);
   if (!nalezen) return read();
   nalezen.kategorie.lezci = nalezen.kategorie.lezci.filter(
@@ -262,10 +274,11 @@ function odeber(id, identifier) {
   return read();
 }
 
-function pridejXp(id, identifier, stena) {
+// Přidat body smí kdokoli v režimu „body“, odebrat (mínus) jen správce.
+function pridejXp(id, identifier, stena, { spravce = false } = {}) {
   const body = Number(stena) || 0;
-  // odebrání bodů (mínus) je už „admin“ akce, přidání stačí režim „body“
-  const skupina = proZapis(id, body < 0 ? "admin" : "body");
+  if (body < 0 && !spravce) throw new Error("Body může odebrat jen správce");
+  const skupina = proZapis(id, { spravce });
   const nalezen = najdi(skupina, identifier);
   if (!nalezen) return read();
   nalezen.kategorie.lezci = nalezen.kategorie.lezci.map((e, i) =>
@@ -275,9 +288,23 @@ function pridejXp(id, identifier, stena) {
   return read();
 }
 
-// Kategorie zakládá kdokoli v režimu „admin“ (heslo netřeba).
+// Odznak lezci přidá nebo odebere jen správce.
+function nastavOdznak(id, identifier, odznak, ma) {
+  if (!ODZNAKY.includes(odznak)) throw new Error("Neznámý odznak");
+  const skupina = proZapis(id, { spravce: true });
+  const nalezen = najdi(skupina, identifier);
+  if (!nalezen) throw new Error("Lezec nenalezen");
+  nalezen.kategorie.lezci = nalezen.kategorie.lezci.map((e, i) => {
+    if (i !== nalezen.index) return e;
+    const bez = e.odznaky.filter((o) => o !== odznak);
+    return { ...e, odznaky: ma ? [...bez, odznak] : bez };
+  });
+  zapis(skupina);
+  return read();
+}
+
 function pridejKategorii(id, nazev) {
-  const skupina = proZapis(id, "admin");
+  const skupina = proZapis(id, { spravce: true });
   const cisty = String(nazev || "").trim().slice(0, 40);
   if (!cisty) throw new Error("Chybí název kategorie");
   if (skupina.kategorie.length >= MAX_KATEGORII)
@@ -296,7 +323,7 @@ function pridejKategorii(id, nazev) {
 
 // Smazat jde jen prázdnou kategorii — lezce i s body nikdo omylem nezahodí.
 function smazKategorii(id, kategorieId) {
-  const skupina = proZapis(id, "admin");
+  const skupina = proZapis(id, { spravce: true });
   const kategorie = skupina.kategorie.find((k) => k.id === kategorieId);
   if (!kategorie) throw new Error("Kategorie neexistuje");
   if (kategorie.lezci.length)
@@ -310,7 +337,7 @@ function smazKategorii(id, kategorieId) {
 // zámek nekontroluje.
 function nastavRezim(id, rezim) {
   if (!REZIMY.includes(rezim)) throw new Error("Neznámý režim");
-  const skupina = proZapis(id, null);
+  const skupina = proZapis(id, { spravce: true });
   skupina.rezim = rezim;
   zapis(skupina);
   return read();
@@ -350,7 +377,7 @@ function smazSkupinu(id) {
 // Jednorázový import (např. dat vytažených ze starého localStorage).
 // Bere nový tvar { kategorie: [...] } i starý { mladsi, starsi }.
 function nahrad(id, nova) {
-  const skupina = proZapis(id, null);
+  const skupina = proZapis(id, { spravce: true });
   skupina.kategorie = ocistiKategorie(nova);
   zapis(skupina);
   return read();
@@ -362,6 +389,7 @@ module.exports = {
   pridej,
   odeber,
   pridejXp,
+  nastavOdznak,
   pridejKategorii,
   smazKategorii,
   nastavRezim,
@@ -369,6 +397,7 @@ module.exports = {
   smazSkupinu,
   nahrad,
   REZIMY,
+  ODZNAKY,
   DATA_DIR,
   SKUPINY_DIR,
 };

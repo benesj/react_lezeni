@@ -143,22 +143,56 @@ async function api(req, res, cesta) {
     return posli(res, 200, { token: auth.vytvorToken() });
   }
 
-  // Správcovské akce — režim zámku a zakládání/mazání skupin. Na tyhle je
-  // potřeba heslo (resp. token z /api/login) bez ohledu na režim skupiny:
-  // režim dovoluje měnit žebříček, ne přestavovat skupiny.
-  const spravcovske = ["/api/zamek", "/api/skupina", "/api/skupina/smaz", "/api/import"];
+  // Správcovské akce — režim, skupiny, kategorie, členové, import. Na tyhle
+  // je potřeba heslo (resp. token z /api/login) bez ohledu na režim skupiny.
+  // Token má jen prohlížeč, kde se správce přihlásil, takže děti na svých
+  // mobilech tyhle věci nedostanou, ani když je skupina otevřená pro body.
+  const spravcovske = [
+    "/api/zamek",
+    "/api/skupina",
+    "/api/skupina/smaz",
+    "/api/import",
+    "/api/add",
+    "/api/remove",
+    "/api/kategorie",
+    "/api/kategorie/smaz",
+    "/api/odznak",
+  ];
   if (spravcovske.includes(cesta)) {
     if (req.method !== "POST")
       return posli(res, 405, { error: "Špatná metoda" });
-    if (!jePrihlasen(req)) return posli(res, 401, { error: "Nepřihlášen" });
+    if (!jePrihlasen(req)) return posli(res, 401, { error: "Jen správce" });
 
     const telo = await nactiTelo(req);
 
     if (cesta === "/api/zamek") {
       // starší klient posílá boolean `odemceno` — převede se na režim
       const rezim =
-        telo.rezim ?? (telo.odemceno === true ? "admin" : "zamceno");
+        telo.rezim ?? (telo.odemceno === true ? "body" : "zamceno");
       return posli(res, 200, store.nastavRezim(telo.id, rezim));
+    }
+    if (cesta === "/api/add") {
+      const { id, jmeno, kategorie, xp } = telo;
+      if (!jmeno || !kategorie) {
+        return posli(res, 400, { error: "Chybí jméno nebo kategorie" });
+      }
+      return posli(res, 200, store.pridej(id, jmeno, kategorie, xp));
+    }
+    if (cesta === "/api/remove") {
+      return posli(res, 200, store.odeber(telo.id, telo.identifier));
+    }
+    if (cesta === "/api/kategorie") {
+      return posli(res, 200, store.pridejKategorii(telo.id, telo.nazev));
+    }
+    if (cesta === "/api/kategorie/smaz") {
+      return posli(res, 200, store.smazKategorii(telo.id, telo.kategorie));
+    }
+    if (cesta === "/api/odznak") {
+      return posli(
+        res,
+        200,
+        store.nastavOdznak(telo.id, telo.identifier, telo.odznak, telo.ma === true),
+      );
     }
     if (cesta === "/api/skupina") {
       const { stav, id } = store.vytvorSkupinu(telo.nazev);
@@ -172,43 +206,23 @@ async function api(req, res, cesta) {
     }
   }
 
-  // Změny žebříčku. Heslo se tady nechce — rozhoduje režim skupiny, který
-  // hlídá store.js: „body“ pustí jen přičtení bodů, „admin“ všechno ostatní.
-  const datove = [
-    "/api/add",
-    "/api/remove",
-    "/api/xp",
-    "/api/kategorie",
-    "/api/kategorie/smaz",
-  ];
-  if (datove.includes(cesta)) {
+  // Zápis bodů — jediná akce bez hesla. Kdokoli smí body přidat, když je
+  // skupina v režimu „body“; odebrat (mínus) je smí jen správce (store.js
+  // to pozná podle příznaku spravce, který se bere z tokenu).
+  if (cesta === "/api/xp") {
     if (req.method !== "POST")
       return posli(res, 405, { error: "Špatná metoda" });
     if (prilisMnohoZapisu()) {
       return posli(res, 429, { error: "Moc změn za sebou, zkus to za chvíli." });
     }
-
     const telo = await nactiTelo(req);
-
-    if (cesta === "/api/add") {
-      const { id, jmeno, kategorie, xp } = telo;
-      if (!jmeno || !kategorie) {
-        return posli(res, 400, { error: "Chybí jméno nebo kategorie" });
-      }
-      return posli(res, 200, store.pridej(id, jmeno, kategorie, xp));
-    }
-    if (cesta === "/api/remove") {
-      return posli(res, 200, store.odeber(telo.id, telo.identifier));
-    }
-    if (cesta === "/api/xp") {
-      return posli(res, 200, store.pridejXp(telo.id, telo.identifier, telo.stena));
-    }
-    if (cesta === "/api/kategorie") {
-      return posli(res, 200, store.pridejKategorii(telo.id, telo.nazev));
-    }
-    if (cesta === "/api/kategorie/smaz") {
-      return posli(res, 200, store.smazKategorii(telo.id, telo.kategorie));
-    }
+    return posli(
+      res,
+      200,
+      store.pridejXp(telo.id, telo.identifier, telo.stena, {
+        spravce: jePrihlasen(req),
+      }),
+    );
   }
 
   return posli(res, 404, { error: "Neznámý endpoint" });

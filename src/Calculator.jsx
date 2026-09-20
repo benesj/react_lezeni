@@ -9,10 +9,12 @@ import {
   pripisXp,
   pridejKategorii,
   smazKategorii,
+  nastavOdznak,
   nastavRezim,
   pridejSkupinu,
   smazSkupinu,
 } from "./api";
+import { ODZNAKY, Odznak, nazevOdznaku } from "./Odznaky";
 import {
   zvukBody,
   zvukUbrano,
@@ -23,16 +25,16 @@ import {
 import { Umisteni } from "./Medaile";
 import "./App.css";
 
-// Režimy zámku skupiny — stejné hodnoty drží server.
+// Režimy zámku skupiny — stejné hodnoty drží server. Platí pro všechny
+// s odkazem; správce přihlášený heslem smí na svém zařízení všechno vždy.
 const REZIMY = [
-  { id: "zamceno", ikona: "🔒", nazev: "zamčeno", popis: "jen prohlížení" },
-  { id: "body", ikona: "🧗", nazev: "body", popis: "body jde jen přidávat" },
-  { id: "admin", ikona: "🔓", nazev: "admin", popis: "vše: body ±, členové, kategorie" },
+  { id: "zamceno", ikona: "🔒", nazev: "zamčeno", popis: "děti jen prohlížejí" },
+  { id: "body", ikona: "🧗", nazev: "body", popis: "děti si přidávají body (jen plus)" },
 ];
 const rezimInfo = (id) => REZIMY.find((r) => r.id === id) || REZIMY[0];
 
 // ✅ Pomocné validace
-// Celé číslo, klidně záporné — mínusem se dají body i odebrat (jen v admin).
+// Celé číslo, klidně záporné — mínusem se dají body i odebrat (jen správce).
 function isNumberOk(number, { jenPlus = false } = {}) {
   const text = String(number ?? "").trim();
   if (jenPlus) return /^\d+$/.test(text) && Number(text) > 0;
@@ -82,10 +84,11 @@ function umisteni(skupina, jmeno) {
   return { index, serazeni };
 }
 
-// ✅ Formulář pro zápis. V režimu „body“ jen kdo + kolik + vypočítej,
-// v režimu „admin“ navíc kategorie, ±, členové a zakládání kategorií.
+// ✅ Formulář pro zápis. Pro děti jen kdo + kolik + vypočítej; přihlášený
+// správce (jen na svém zařízení) má navíc kategorie, ±, členy a zakládání
+// kategorií.
 const Formular = ({
-  rezim,
+  admin,
   text,
   onChangeText,
   number,
@@ -100,7 +103,6 @@ const Formular = ({
   pridatKategorii,
 }) => {
   const { skupina } = useContext(AppContext);
-  const admin = rezim === "admin";
   const kategorieOk = skupina?.kategorie.some((k) => k.id === kategorie);
   const cisloOk = isNumberOk(number, { jenPlus: !admin });
 
@@ -164,7 +166,7 @@ const Formular = ({
 
       {admin && (
         <div className="admin-blok">
-          <p className="section-title">Členové</p>
+          <p className="section-title">Členové (jen správce)</p>
           <button
             className="btn green"
             onClick={() =>
@@ -182,7 +184,7 @@ const Formular = ({
             odeber člena
           </button>
 
-          <p className="section-title">Kategorie</p>
+          <p className="section-title">Kategorie (jen správce)</p>
           <div className="input-radek">
             <input
               className="input"
@@ -318,32 +320,69 @@ const PanelSpravce = ({ skupina, provedAkci, odhlas, setVybrana }) => {
 };
 
 // ✅ Tabulka — každá kategorie má vlastní žebříček s medailemi a bramborou.
-const Tabulka = ({ skupina, onChangeText, onChangeNumber, smazatKategorii }) => {
+// Nad jménem jsou odznaky, které lezec má; správce (prepniOdznak) vidí
+// u každého lezce i zaškrtávátka na jejich přidělování.
+const Tabulka = ({
+  skupina,
+  onChangeText,
+  onChangeNumber,
+  smazatKategorii,
+  prepniOdznak,
+}) => {
   if (!skupina) return null;
   if (!skupina.kategorie.length) {
     return (
       <p className="popis-rezimu">
-        Zatím žádná kategorie. Přidá se v režimu „admin“.
+        Zatím žádná kategorie. Přidá ji správce po přihlášení.
       </p>
     );
   }
 
-  const radek = (item, index) => (
-    <div key={item.jmeno} className="radek-lezce">
-      <span className="umisteni">
-        <Umisteni index={index} />
-      </span>
-      <span
-        onClick={() => {
-          onChangeText(item.jmeno);
-          onChangeNumber(null);
-        }}
-        className="bold-text"
-      >
-        {item.jmeno} xp: {item.xp}
-      </span>
-    </div>
-  );
+  const radek = (item, index) => {
+    const ma = item.odznaky || [];
+    return (
+      <div key={item.jmeno} className="radek-lezce">
+        <span className="umisteni">
+          <Umisteni index={index} />
+        </span>
+        <div className="lezec">
+          {ma.length > 0 && (
+            <div className="odznaky">
+              {ma.map((o) => (
+                <Odznak key={o} id={o} maly />
+              ))}
+            </div>
+          )}
+          <span
+            onClick={() => {
+              onChangeText(item.jmeno);
+              onChangeNumber(null);
+            }}
+            className="bold-text"
+          >
+            {item.jmeno} xp: {item.xp}
+          </span>
+          {prepniOdznak && (
+            <div className="odznaky-volba">
+              {ODZNAKY.map((o) => (
+                <label key={o.id} title={o.nazev}>
+                  <input
+                    type="checkbox"
+                    checked={ma.includes(o.id)}
+                    onChange={(e) =>
+                      prepniOdznak(item.jmeno, o.id, e.target.checked)
+                    }
+                  />
+                  <Odznak id={o.id} />
+                  <span className="odznak-nazev">{nazevOdznaku(o.id)}</span>
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div>
@@ -420,6 +459,9 @@ function Calculator() {
   const smazatKategorii = (kid) =>
     provedAkci(() => smazKategorii(skupina.id, kid));
 
+  const prepniOdznak = (identifier, odznak, ma) =>
+    provedAkci(() => nastavOdznak(skupina.id, identifier, odznak, ma));
+
   // Zápis bodů + efekty podle toho, co se stalo.
   const vypocet = async (who, stena) => {
     const body = Number(stena) || 0;
@@ -464,6 +506,9 @@ function Calculator() {
 
   const rezim = skupina?.rezim || "zamceno";
   const info = rezimInfo(rezim);
+  // Správce přihlášený na tomhle zařízení smí všechno bez ohledu na režim;
+  // ostatní vidí formulář jen u skupiny v režimu „body“.
+  const muzeZapisovat = spravce || rezim === "body";
 
   return (
     <>
@@ -486,13 +531,13 @@ function Calculator() {
       {skupina && (
         <p className="section-title">
           {skupina.nazev} {info.ikona} {info.nazev}
+          {spravce && " · přihlášen správce"}
         </p>
       )}
 
-      {/* Formulář se ukáže jen u odemčené skupiny — zamčenou nezmění nikdo. */}
-      {skupina && rezim !== "zamceno" ? (
+      {skupina && muzeZapisovat ? (
         <Formular
-          rezim={rezim}
+          admin={spravce}
           text={text}
           onChangeText={onChangeText}
           number={number}
@@ -538,7 +583,8 @@ function Calculator() {
         onChangeText={onChangeText}
         onChangeNumber={onChangeNumber}
         skupina={skupina}
-        smazatKategorii={rezim === "admin" ? smazatKategorii : null}
+        smazatKategorii={spravce ? smazatKategorii : null}
+        prepniOdznak={spravce ? prepniOdznak : null}
       />
     </>
   );

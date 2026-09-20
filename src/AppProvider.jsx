@@ -29,7 +29,7 @@ function normalizuj(stav) {
       .map((s) => ({
         ...s,
         nazev: s.nazev || s.id,
-        rezim: s.rezim || (s.odemceno ? "admin" : "zamceno"),
+        rezim: s.rezim === "body" || s.rezim === "admin" || s.odemceno ? "body" : "zamceno",
         kategorie: Array.isArray(s.kategorie)
           ? s.kategorie.map((k) => ({
               ...k,
