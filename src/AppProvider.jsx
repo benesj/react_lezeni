@@ -19,10 +19,30 @@ const CACHE_KEY = "zebricekCache";
 // Kterou skupinu měl uživatel naposledy vybranou.
 const VYBRANA_KEY = "vybranaSkupina";
 
+// Data se dosadí do známého tvaru, ať aplikace nespadne na cache ze starší
+// verze (ta měla místo `kategorie` seznamy mladsi/starsi a boolean odemceno).
+function normalizuj(stav) {
+  const skupiny = Array.isArray(stav?.skupiny) ? stav.skupiny : [];
+  return {
+    skupiny: skupiny
+      .filter((s) => s && typeof s.id === "string")
+      .map((s) => ({
+        ...s,
+        nazev: s.nazev || s.id,
+        rezim: s.rezim || (s.odemceno ? "admin" : "zamceno"),
+        kategorie: Array.isArray(s.kategorie)
+          ? s.kategorie.map((k) => ({
+              ...k,
+              lezci: Array.isArray(k.lezci) ? k.lezci : [],
+            }))
+          : [],
+      })),
+  };
+}
+
 function nactiCache() {
   try {
-    const ulozene = JSON.parse(localStorage.getItem(CACHE_KEY));
-    if (Array.isArray(ulozene?.skupiny)) return ulozene;
+    return normalizuj(JSON.parse(localStorage.getItem(CACHE_KEY)));
   } catch {
     /* poškozená cache se prostě zahodí */
   }
@@ -39,7 +59,8 @@ function AppProvider({ children }) {
   const jePrvniNacteni = useRef(true);
 
   // setData dostává celý nový stav ze serveru (každý zápis ho vrací).
-  const setData = useCallback((novy) => {
+  const setData = useCallback((surovy) => {
+    const novy = normalizuj(surovy);
     setStavState(novy);
     localStorage.setItem(CACHE_KEY, JSON.stringify(novy));
   }, []);
