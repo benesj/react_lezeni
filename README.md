@@ -58,6 +58,10 @@ sůl — heslo samotné nikde uložené není a do prohlížeče se nedostane.
 Soubor není v gitu ani v buildu. Změna hesla: `npm run set-password`.
 Přihlášení platí 12 hodin nebo do restartu serveru.
 
+Brzdy proti zahlcení: hádání hesla max 10 pokusů/min z adresy a 60/min celkem,
+zápisy max 120/min, a obecně max 240 požadavků/min na API z jedné adresy
+(víc dostane 429). Nedokončené požadavky server po 15–30 s zahodí.
+
 ## Skupiny a zámek
 
 Kroužek může mít víc skupin (např. víc part v týdnu). Každá je samostatný

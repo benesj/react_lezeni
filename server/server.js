@@ -85,6 +85,25 @@ const adresaZadatele = (req) => {
   return socket;
 };
 
+// Obecná brzda na API: max 240 požadavků za minutu z jedné adresy. Běžný
+// klient se ptá každých 5 s (12/min), takže na normální provoz nemá vliv,
+// ale kdo by se pokusil server zahltit, dostane 429 bez práce s daty.
+const MAX_POZADAVKU_ZA_MIN = 240;
+const pozadavky = new Map();
+function prilisMnohoPozadavku(ip) {
+  const ted = Date.now();
+  const zaznam = pozadavky.get(ip);
+  if (!zaznam || ted - zaznam.od > 60_000) {
+    pozadavky.set(ip, { od: ted, pocet: 1 });
+    if (pozadavky.size > 5000) {
+      for (const [klic, z] of pozadavky) if (ted - z.od > 60_000) pozadavky.delete(klic);
+    }
+    return false;
+  }
+  zaznam.pocet++;
+  return zaznam.pocet > MAX_POZADAVKU_ZA_MIN;
+}
+
 // Jednoduchá brzda na hádání hesla: max 10 pokusů za minutu z jedné adresy.
 const pokusy = new Map();
 function prilisMnohoPokusu(ip) {
@@ -122,6 +141,9 @@ function prilisMnohoZapisu() {
 
 async function api(req, res, cesta) {
   if (req.method === "OPTIONS") return posli(res, 204, {});
+  if (prilisMnohoPozadavku(adresaZadatele(req))) {
+    return posli(res, 429, { error: "Moc požadavků, zkus to za chvíli." });
+  }
 
   if (cesta === "/api/data" && req.method === "GET") {
     return posli(res, 200, store.read());
@@ -285,6 +307,11 @@ const presmerovani = http.createServer((req, res) => {
 // Certifikát se při prvním spuštění vyrobí sám (a znovu, když se změní IP).
 async function start() {
   const server = https.createServer(await cert.nacti(), obsluha);
+  // Pomalé nebo nedokončené požadavky (např. záměrně držené spojení) se po
+  // chvíli zahodí, ať nedrží serveru prostředky.
+  server.headersTimeout = 15_000;
+  server.requestTimeout = 30_000;
+  server.keepAliveTimeout = 5_000;
 
   server.listen(HTTPS_PORT, () => {
     const { ip } = cert.adresy();

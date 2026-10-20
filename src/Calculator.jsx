@@ -256,8 +256,10 @@ const PrepinacSkupin = ({ skupiny, vybrana, setVybrana }) => {
 };
 
 // ✅ Panel správce — režim zámku a zakládání/mazání skupin. Jen za heslem.
-const PanelSpravce = ({ skupina, provedAkci, odhlas, setVybrana }) => {
+// Mazání je dvoustupňové (tlačítko -> potvrzení), aby se nedalo trefit omylem.
+const PanelSpravce = ({ skupina, provedAkci, setVybrana }) => {
   const [novaSkupina, setNovaSkupina] = useState("");
+  const [potvrditSmazani, setPotvrditSmazani] = useState(false);
 
   const zaloz = () => {
     if (!novaSkupina.trim()) return;
@@ -270,10 +272,8 @@ const PanelSpravce = ({ skupina, provedAkci, odhlas, setVybrana }) => {
   };
 
   const smaz = () => {
-    const otazka =
-      `Smazat skupinu "${skupina.nazev}" i s jejím žebříčkem?\n` +
-      "Soubor se odloží do složky smazane/, takže se dá vrátit.";
-    if (window.confirm(otazka)) provedAkci(() => smazSkupinu(skupina.id));
+    setPotvrditSmazani(false);
+    provedAkci(() => smazSkupinu(skupina.id));
   };
 
   return (
@@ -309,12 +309,29 @@ const PanelSpravce = ({ skupina, provedAkci, odhlas, setVybrana }) => {
         </button>
       </div>
 
-      <button className="btn red" onClick={smaz}>
-        smaž skupinu
-      </button>
-      <button className="btn" onClick={odhlas}>
-        ukonči správce
-      </button>
+      <div className="nebezpecne">
+        {potvrditSmazani ? (
+          <div className="potvrzeni">
+            <p>
+              Opravdu smazat skupinu „{skupina.nazev}“ i s jejím žebříčkem?
+              Soubor se odloží do složky smazane/, takže se dá vrátit.
+            </p>
+            <button className="btn red" onClick={smaz}>
+              ano, smazat „{skupina.nazev}“
+            </button>
+            <button className="btn" onClick={() => setPotvrditSmazani(false)}>
+              ne, nechat
+            </button>
+          </div>
+        ) : (
+          <button
+            className="btn odkaz maly"
+            onClick={() => setPotvrditSmazani(true)}
+          >
+            smazat skupinu „{skupina.nazev}“…
+          </button>
+        )}
+      </div>
     </div>
   );
 };
@@ -531,7 +548,14 @@ function Calculator() {
       {skupina && (
         <p className="section-title">
           {skupina.nazev} {info.ikona} {info.nazev}
-          {spravce && " · přihlášen správce"}
+          {spravce && (
+            <>
+              {" · přihlášen správce"}
+              <button className="btn odkaz maly" onClick={odhlas}>
+                ukonči správce
+              </button>
+            </>
+          )}
         </p>
       )}
 
@@ -559,7 +583,6 @@ function Calculator() {
         <PanelSpravce
           skupina={skupina}
           provedAkci={provedAkci}
-          odhlas={odhlas}
           setVybrana={setVybrana}
         />
       ) : chceHeslo ? (

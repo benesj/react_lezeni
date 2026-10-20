@@ -313,3 +313,19 @@ select.input {
 .odznaky-volba {
   max-width: 100%;
 }
+
+/* mazání skupiny — schované za dvoustupňovým potvrzením, oddělené od ostatních tlačítek */
+.nebezpecne {
+  margin-top: 28px;
+  padding-top: 8px;
+  border-top: 1px dashed #553;
+}
+.potvrzeni {
+  border: 1px solid #c00;
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: #200;
+}
+.potvrzeni p {
+  margin: 0 0 8px;
+}
