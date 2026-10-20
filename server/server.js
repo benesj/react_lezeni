@@ -73,15 +73,18 @@ const jePrihlasen = (req) => {
   return auth.jePlatny(hlavicka.replace(/^Bearer\s+/i, ""));
 };
 
-// Přes tunel chodí všechno z localhostu, skutečnou adresu posílá Cloudflare
-// v hlavičce — bez toho by brzda platila společně pro všechny.
-// Věřit se jí ale smí jen u spojení z loopbacku (tj. od tunelu). Kdo se
-// připojí přímo v síti, by si jinak hlavičku vymyslel a brzdu obešel.
+// Přes Tailscale Funnel chodí všechno z localhostu a skutečnou adresu
+// klienta posílá tailscaled v hlavičce X-Forwarded-For (dřívější Cloudflare
+// tunel používal cf-connecting-ip). Bez toho by brzdy platily společně pro
+// všechny děti najednou. Věřit se hlavičce smí jen u spojení z loopbacku
+// (tj. od tunelu) — kdo se připojí přímo v síti, by si ji jinak vymyslel.
 const LOOPBACK = ["127.0.0.1", "::1", "::ffff:127.0.0.1"];
 const adresaZadatele = (req) => {
   const socket = req.socket.remoteAddress || "";
-  const cf = req.headers["cf-connecting-ip"];
-  if (cf && LOOPBACK.includes(socket)) return String(cf).split(",")[0].trim();
+  if (!LOOPBACK.includes(socket)) return socket;
+  const hlavicka =
+    req.headers["cf-connecting-ip"] || req.headers["x-forwarded-for"];
+  if (hlavicka) return String(hlavicka).split(",")[0].trim();
   return socket;
 };
 
